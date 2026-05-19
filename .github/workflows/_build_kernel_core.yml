@@ -413,15 +413,7 @@ jobs:
             # Selalu bersihkan integrasi Kconfig lama untuk menghindari redundansi atau kegagalan parsing
             sed -i '/drivers\/kernelsu\/Kconfig/d' common/drivers/Kconfig
             # Suntikkan Kconfig secara aman tepat sebelum endmenu terakhir di common/drivers/Kconfig
-            python3 -c "
-with open('common/drivers/Kconfig', 'r') as f:
-    content = f.read()
-pos = content.rfind('endmenu')
-if pos != -1:
-    content = content[:pos] + 'source \"drivers/kernelsu/Kconfig\"\n\n' + content[pos:]
-with open('common/drivers/Kconfig', 'w') as f:
-    f.write(content)
-"
+            python3 -c "with open('common/drivers/Kconfig', 'r+') as f: c = f.read(); p = c.rfind('endmenu'); f.seek(0); f.write(c[:p] + 'source \"drivers/kernelsu/Kconfig\"\n\n' + c[p:]) if p != -1 else f.write(c)"
             echo "   ✅ Safely injected KSU Kconfig before endmenu in drivers/Kconfig"
 
             # Lacak perubahan file agar Bazel menyertakannya dalam pohon build
