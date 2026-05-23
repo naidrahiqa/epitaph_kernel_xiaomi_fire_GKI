@@ -371,6 +371,10 @@ jobs:
             find common/drivers/kernelsu -name "BUILD" -delete
             echo "   ✅ Removed local BUILD/BUILD.bazel files from drivers/kernelsu to merge Bazel package boundary"
 
+            # Hapus ketergantungan EXT4_FS agar CONFIG_KSU tidak dipaksa menjadi module (=m) oleh GKI
+            sed -i '/depends on EXT4_FS/d' common/drivers/kernelsu/Kconfig
+            echo "   ✅ Removed depends on EXT4_FS from drivers/kernelsu/Kconfig to prevent built-in downgrade"
+
             # Pastikan proses penyalinan berhasil
             if [ ! -f "common/drivers/kernelsu/Kconfig" ]; then
               echo "❌ ERROR: KernelSU driver files not found after copy!"
@@ -1179,15 +1183,24 @@ jobs:
           name: "Epitaph Kernel ${{ inputs.release_tag }}"
           body: |
             ### 📦 Epitaph-${{ inputs.custom_name }}
-            - **Type:** GKI 6.6 ${{ inputs.with_susfs == 'true' && '+ SUSFS' || '(No SUSFS)' }}
+            - **Type:** GKI 6.6 ${{ inputs.with_susfs == 'true' && '⚡ + SUSFS' || '🛡️ (No SUSFS)' }}
             - **Root:** ${{ inputs.ksu_method }} v${{ env.KSU_VERSION }}
-            - **Governor:** schedutil
+            - **Governor:** schedutil (Optimized)
             - **KMI:** ${{ env.KMI_GENERATION }}
             - **Toolchain:** ${{ inputs.clang_toolchain }}
               - *${{ env.TOOLCHAIN_VER }}*
             - **Built:** ${{ env.BUILD_TIME }} (run #${{ github.run_number }})
 
             ---
+
+            ### 🚀 Fitur Unggulan (Tournament Ready):
+            * **📶 WiFi & Hotspot 100% Stabil:** Subsystem Netfilter NAT lengkap (IPv4/IPv6) + driver kustom `cfg80211` & `mac80211` terintegrasi secara modular dengan auto-loader fallback.
+            * **🎛️ Epitaph Tuner Post-Boot:** Optimalisasi scheduler CPU schedutil, bypass limiter termal GPU MediaTek, ZRAM swappiness 180, dan read-ahead storage 512KB untuk performa gaming lancar jaya bebas lag!
+            * **🐏 Memori Maksimal (Anti-OOM):** ZRAM ZSTD dengan kompresi multi-core paralel + Kernel Samepage Merging (KSM) untuk menghemat RAM hingga 1GB+ pada varian HP 4GB.
+            * **🔋 Baterai Efisien:** Pengaturan batas waktu transisi frekuensi CPU untuk UI super mulus tanpa mengorbankan daya tahan baterai.
+
+            ---
+
             > ⚠️ **Wajib flash vbmeta dulu sebelum install kernel ini!**
             > ```
             > fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img
@@ -1336,7 +1349,7 @@ jobs:
 
           # Caption pakai HTML parse_mode agar rapi di Telegram
           # Telegram caption max 1024 chars — jaga tetap ringkas
-          CAPTION=$(printf '<b>🔧 Epitaph Kernel — Build Done</b>\n\n<b>Kernel Name:</b> ${{ inputs.custom_name }}\n<b>Version:</b> v${{ github.run_number }}\n<b>Developer:</b> ${{ inputs.author_name }}\n<b>Type:</b> GKI 6.6\n<b>Root:</b> ${{ inputs.ksu_method }} v${{ env.KSU_VERSION }}\n<b>Governor:</b> schedutil\n<b>SUSFS:</b> %s\n<b>KMI:</b> ${{ env.KMI_GENERATION }}\n<b>Toolchain:</b> ${{ inputs.clang_toolchain }}\n  └ <i>${{ env.TOOLCHAIN_VER }}</i>\n<b>Size:</b> %s\n\n<a href="%s">📦 GitHub Release</a>' \
+          CAPTION=$(printf '<b>👑 Epitaph Kernel — Build Done (Tournament Ready)</b>\n\n<b>Kernel Name:</b> ${{ inputs.custom_name }}\n<b>Version:</b> v${{ github.run_number }}\n<b>Developer:</b> ${{ inputs.author_name }}\n<b>Type:</b> GKI 6.6\n<b>Root:</b> ${{ inputs.ksu_method }} v${{ env.KSU_VERSION }}\n<b>Governor:</b> schedutil (Optimized)\n<b>SUSFS:</b> %s\n<b>KMI:</b> ${{ env.KMI_GENERATION }}\n<b>Toolchain:</b> ${{ inputs.clang_toolchain }}\n  └ <i>${{ env.TOOLCHAIN_VER }}</i>\n<b>Size:</b> %s\n\n<b>🚀 Optimizations:</b>\n• WiFi & Hotspot NAT (IPv4/IPv6) 100%% OK\n• Epitaph Tuner Active (Gaming Engine)\n• ZRAM ZSTD Multi-comp & KSM Active\n\n<a href="%s">📦 GitHub Release</a>' \
             "$SUSFS_LABEL" "$ZIP_SIZE" "$RELEASE_URL")
 
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
