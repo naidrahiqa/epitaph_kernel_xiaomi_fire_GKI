@@ -275,30 +275,6 @@ jobs:
 
           make kernelversion
 
-      - name: Override Bazel Clang with Custom Toolchain
-        if: inputs.clang_toolchain != 'bazel-default' && inputs.clang_toolchain != ''
-        run: |
-          set -euo pipefail
-          if [ -z "${CUSTOM_CLANG_PATH:-}" ]; then
-            echo "❌ ERROR: CUSTOM_CLANG_PATH not set!"
-            exit 1
-          fi
-          # Cari folder prebuilt Clang bawaan AOSP (biasanya berawalan clang-r)
-          AOSP_CLANG_DIR=$(find kernel/prebuilts/clang/host/linux-x86/ -maxdepth 1 -type d -name "clang-r*" | head -n1)
-          if [ -n "$AOSP_CLANG_DIR" ]; then
-            echo "✅ Found default AOSP Clang directory: $AOSP_CLANG_DIR"
-            # Backup folder AOSP Clang
-            mv "$AOSP_CLANG_DIR" "${AOSP_CLANG_DIR}_backup"
-            # Buat symlink dari Custom Clang kita ke nama folder AOSP Clang
-            ln -sf "$CUSTOM_CLANG_PATH" "$AOSP_CLANG_DIR"
-            echo "✅ Successfully linked Custom Clang ($CUSTOM_CLANG_PATH) to AOSP Clang path ($AOSP_CLANG_DIR)"
-            # Verifikasi versi compiler baru yang terpasang di path tersebut
-            $AOSP_CLANG_DIR/bin/clang --version | head -n1
-          else
-            echo "❌ ERROR: Could not find default AOSP Clang directory (clang-r*) in kernel/prebuilts/clang/host/linux-x86/"
-            exit 1
-          fi
-
       - name: Set KMI Generation
         run: |
           set -euo pipefail
@@ -756,65 +732,27 @@ jobs:
           echo "# Module Compatibility" >> "$DEFCONFIG"
           add_cfg "CONFIG_MODULE_SIG_FORCE=n"
           add_cfg "CONFIG_MODULE_SIG_ALL=n"
+          add_cfg "CONFIG_MODULE_SIG_PROTECT=n"
+          add_cfg "CONFIG_MODVERSIONS=y"
 
           echo "" >> "$DEFCONFIG"
           echo "# CPU Governor" >> "$DEFCONFIG"
-          for gov in SCHEDUTIL PERFORMANCE ONDEMAND CONSERVATIVE USERSPACE POWERSAVE; do
-            add_cfg "CONFIG_CPU_FREQ_GOV_${gov}=y"
-          done
-          GOV_UPPER=$(echo "$GOVERNOR" | tr '[:lower:]' '[:upper:]')
-          add_cfg "CONFIG_CPU_FREQ_GOV_${GOV_UPPER}=y"
+          add_cfg "CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y"
           sed -i '/^CONFIG_CPU_FREQ_DEFAULT_GOV_/d' "$DEFCONFIG"
-          add_cfg "CONFIG_CPU_FREQ_DEFAULT_GOV_${GOV_UPPER}=y"
+          add_cfg "CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y"
 
-          # TANGANI BAZEL ZRAM: Bazel memerlukan file zram.ko dan zsmalloc.ko berada di daftar module_outs.
-          # Kita paksa kompilasi keduanya sebagai modul (=m) agar sistem build dapat melacaknya dengan benar.
-          # Kami juga menambahkan kompresi ZSTD, aliran multi-kompresi, dan KSM untuk meminimalkan konsumsi RAM pada perangkat 4GB.
           echo "" >> "$DEFCONFIG"
           echo "# ZRAM & Memory Optimizations" >> "$DEFCONFIG"
           add_cfg "CONFIG_ZSMALLOC=m"
           add_cfg "CONFIG_ZRAM=m"
-          add_cfg "CONFIG_CRYPTO_LZ4=y"
-          add_cfg "CONFIG_ZRAM_DEF_COMP_LZ4=y"
-          add_cfg "CONFIG_CRYPTO_ZSTD=y"
-          add_cfg "CONFIG_ZRAM_DEF_COMP_ZSTD=y"
-          add_cfg "CONFIG_ZRAM_MULTI_COMP=y"
-          add_cfg "CONFIG_KSM=y"
 
           echo "" >> "$DEFCONFIG"
-          echo "# Network Optimizations (Safe)" >> "$DEFCONFIG"
-          add_cfg "CONFIG_TCP_CONG_ADVANCED=y"
-          add_cfg 'CONFIG_DEFAULT_TCP_CONG="bbr"'
-          add_cfg "CONFIG_NET_SCH_FQ=y"
-          add_cfg 'CONFIG_DEFAULT_NET_SCH="fq"'
-
-          # Branding — Custom name
-          sed -i '/CONFIG_LOCALVERSION/d' $DEFCONFIG
-          echo "" >> $DEFCONFIG
-          echo "# Branding" >> $DEFCONFIG
-          echo 'CONFIG_LOCALVERSION="-Epitaph"' >> $DEFCONFIG
-          echo "CONFIG_LOCALVERSION_AUTO=n" >> $DEFCONFIG
-
-          # PERBAIKAN WIFI & KONEKTIVITAS:
-          # CFG80211 dan MAC80211 harus dikompilasi sebagai modul (=m) agar sesuai standar arsitektur GKI.
+          echo "# WiFi & Connectivity" >> "$DEFCONFIG"
           add_cfg "CONFIG_CFG80211=m"
           add_cfg "CONFIG_NL80211_TESTMODE=y"
           add_cfg "CONFIG_CFG80211_WEXT=y"
           add_cfg "CONFIG_MAC80211=m"
-          
-          # Nonaktifkan proteksi tanda tangan modul GKI agar modul pihak ketiga dapat dimuat dengan aman
-          add_cfg "CONFIG_MODULE_SIG_PROTECT=n"
 
-          # Wajib aktifkan CONFIG_MODVERSIONS untuk kompatibilitas KMI Bazel (menghindari error module_layout di ksymtab) dan loading driver vendor HyperOS
-          add_cfg "CONFIG_MODVERSIONS=y"
-          
-          # MediaTek Specific (Connectivity)
-          add_cfg "CONFIG_MTK_COMBO_WIFI=y"
-          add_cfg "CONFIG_MTK_COMBO_BT=y"
-          add_cfg "CONFIG_MTK_COMBO_GPS=y"
-          
-          # PERBAIKAN HOTSPOT & TETHERING:
-          # Aktifkan subsystem Netfilter NAT (IPv4 & IPv6) agar proses berbagi koneksi internet dari perangkat berjalan normal.
           echo "" >> "$DEFCONFIG"
           echo "# Netfilter for Hotspot/Tethering" >> "$DEFCONFIG"
           add_cfg "CONFIG_NETFILTER=y"
@@ -824,17 +762,13 @@ jobs:
           add_cfg "CONFIG_IP_NF_IPTABLES=y"
           add_cfg "CONFIG_IP_NF_NAT=y"
           add_cfg "CONFIG_IP_NF_TARGET_MASQUERADE=y"
-          add_cfg "CONFIG_IP6_NF_NAT=y"
-          add_cfg "CONFIG_IP6_NF_TARGET_MASQUERADE=y"
-          add_cfg "CONFIG_NETFILTER_XT_NAT=y"
-          add_cfg "CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y"
 
-          # CATATAN OPTIMASI (SEMENTARA DINONAKTIFKAN):
-          # Konfigurasi di bawah disimpan sebagai referensi, namun tidak boleh diaktifkan dahulu
-          # demi menjamin kestabilan booting dan fungsi hotspot di Android 15.
-          # add_cfg "CONFIG_DEBUG_INFO_NONE=y"        # Memicu BTF Error pada Android 15
-          # add_cfg "CONFIG_THERMAL=y"                # Berisiko bentrok dengan subsystem Thermal MTK
-          # ─── END DISABLED ──────────────────────────────────────────────
+          # Branding — Custom name
+          sed -i '/CONFIG_LOCALVERSION/d' $DEFCONFIG
+          echo "" >> $DEFCONFIG
+          echo "# Branding" >> $DEFCONFIG
+          echo 'CONFIG_LOCALVERSION="-Epitaph"' >> $DEFCONFIG
+          echo "CONFIG_LOCALVERSION_AUTO=n" >> $DEFCONFIG
 
           # PStore (RAMoops) — KEEP
           echo "" >> "$DEFCONFIG"
@@ -898,6 +832,7 @@ jobs:
           echo "✅ Extra disk space freed by removing unused .git folders"
 
       - name: Build Kernel (Bazel)
+        if: inputs.clang_toolchain == 'bazel-default' || inputs.clang_toolchain == ''
         run: |
           set -euo pipefail
           cd kernel
@@ -947,18 +882,66 @@ jobs:
         env:
           SOURCE_DATE_EPOCH: "0"
 
+      - name: Build Kernel (Custom Toolchain)
+        if: inputs.clang_toolchain != 'bazel-default' && inputs.clang_toolchain != ''
+        run: |
+          set -euo pipefail
+          cd kernel/common
+          if [ -z "${CUSTOM_CLANG_PATH:-}" ]; then
+            echo "❌ ERROR: CUSTOM_CLANG_PATH not set!"
+            exit 1
+          fi
+          export PATH="$CUSTOM_CLANG_PATH/bin:$PATH"
+          which clang || { echo "❌ clang not in PATH!"; exit 1; }
+          
+          # Deteksi arsitektur target Clang demi jaminan kompatibilitas kompilasi silang
+          CLANG_TRIPLE=$(clang -dumpmachine)
+          echo "✅ Using Clang Triple: $CLANG_TRIPLE"
+
+          MAKE_ARGS="O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            CLANG_TRIPLE=$CLANG_TRIPLE HOSTLDFLAGS=-fuse-ld=bfd"
+
+          make $MAKE_ARGS gki_defconfig
+          
+          # Kompilasi Citra Kernel dan Modul Driver
+          # PENTING: Utamakan hasil kompilasi Image.gz agar perangkat MediaTek dapat memuat kernel dengan sukses tanpa kendala.
+          make -j$(nproc) $MAKE_ARGS Image.gz Image.lz4 modules 2>&1 | tee ../build.log
+        env:
+          SOURCE_DATE_EPOCH: "0"
+
       - name: Extract Build Output
         run: |
           set -euo pipefail
           mkdir -p $GITHUB_WORKSPACE/dist
-          cd kernel
-          for artifact in Image Image.gz Image.lz4; do
-            if [ ! -f "$GITHUB_WORKSPACE/dist/$artifact" ]; then
-              if [ -f "bazel-bin/common/kernel_aarch64/$artifact" ]; then
-                cp -v "bazel-bin/common/kernel_aarch64/$artifact" "$GITHUB_WORKSPACE/dist/" || true
+          if [ "${{ inputs.clang_toolchain }}" = "bazel-default" ] || [ -z "${{ inputs.clang_toolchain }}" ]; then
+            cd kernel
+            for artifact in Image Image.gz Image.lz4; do
+              if [ ! -f "$GITHUB_WORKSPACE/dist/$artifact" ]; then
+                if [ -f "bazel-bin/common/kernel_aarch64/$artifact" ]; then
+                  cp -v "bazel-bin/common/kernel_aarch64/$artifact" "$GITHUB_WORKSPACE/dist/" || true
+                fi
               fi
-            fi
-          done
+            done
+          else
+            # Proses ekstraksi hasil kompilasi dari folder 'out' compiler kustom
+            for img in \
+              kernel/common/out/arch/arm64/boot/Image \
+              kernel/common/out/arch/arm64/boot/Image.gz \
+              kernel/common/out/arch/arm64/boot/Image.lz4; do
+              if [ -f "$img" ]; then
+                cp -v "$img" "$GITHUB_WORKSPACE/dist/"
+              fi
+            done
+            # Ambil pula file driver modul WiFi (cfg80211.ko & mac80211.ko) untuk disertakan ke AnyKernel3
+            for mod in cfg80211.ko mac80211.ko; do
+              FOUND=$(find kernel/common/out -name "$mod" -type f 2>/dev/null | head -1)
+              if [ -n "$FOUND" ]; then
+                cp -v "$FOUND" "$GITHUB_WORKSPACE/dist/"
+                echo "✅ Extracted module: $mod"
+              fi
+            done
+          fi
           echo "📦 dist/ contents:"
           ls -lah $GITHUB_WORKSPACE/dist/ || true
 
