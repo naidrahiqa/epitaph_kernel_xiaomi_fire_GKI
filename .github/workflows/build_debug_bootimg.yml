@@ -109,7 +109,10 @@ jobs:
             fi
             sleep 30
           done
-          [ "$SYNC_OK" = "false" ] && echo "❌ repo sync gagal" && exit 1
+          if [ "$SYNC_OK" = "false" ]; then
+            echo "❌ repo sync gagal"
+            exit 1
+          fi
           cd common && KERNEL_COMMIT=$(git log --oneline -1)
           echo "✅ Using tip of branch ($KERNEL_COMMIT)"
 
@@ -260,7 +263,10 @@ jobs:
             fi
             sleep 30
           done
-          [ "$BUILD_OK" != "true" ] && echo "❌ Bazel build gagal" && exit 1
+          if [ "$BUILD_OK" != "true" ]; then
+            echo "❌ Bazel build gagal"
+            exit 1
+          fi
         env:
           SOURCE_DATE_EPOCH: "0"
 
@@ -289,7 +295,10 @@ jobs:
           for f in dist/Image dist/Image.gz dist/Image.lz4; do
             [ -f "$f" ] && HAS_IMAGE=true
           done
-          [ "$HAS_IMAGE" = "false" ] && echo "❌ No kernel image found!" && exit 1
+          if [ "$HAS_IMAGE" = "false" ]; then
+            echo "❌ No kernel image found!"
+            exit 1
+          fi
 
       - name: Download Stock boot.img
         run: |
@@ -320,7 +329,10 @@ jobs:
           for img in "$GITHUB_WORKSPACE/dist/Image.gz" "$GITHUB_WORKSPACE/dist/Image.lz4" "$GITHUB_WORKSPACE/dist/Image"; do
             [ -f "$img" ] && SELECTED="$img" && break
           done
-          [ -z "$SELECTED" ] && echo "❌ No kernel image!" && exit 1
+          if [ -z "$SELECTED" ]; then
+            echo "❌ No kernel image!"
+            exit 1
+          fi
           cp "$SELECTED" kernel
           ../magiskboot repack boot.img new_boot.img
           cp new_boot.img "$GITHUB_WORKSPACE/dist/${RESCUE_NAME}-boot.img"
