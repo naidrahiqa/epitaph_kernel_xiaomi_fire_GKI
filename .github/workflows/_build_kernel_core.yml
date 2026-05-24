@@ -107,64 +107,18 @@ jobs:
             gki-bazel-${{ inputs.ksu_method }}-
             gki-bazel-
 
-      - name: Maximize Disk Space
+      - name: Prepare Kernel Build (Common)
         run: |
-          df -h
-          sudo rm -rf \
-            /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /usr/share/swift /usr/share/miniconda \
-            /usr/local/share/chromium /usr/local/share/powershell \
-            /usr/local/bin/aliyun /usr/local/bin/azcopy /usr/local/bin/cmake-gui
-          sudo apt-get remove -y '^dotnet-.*' '^llvm-.*' 'php.*' \
-            azure-cli google-cloud-cli google-chrome-stable firefox \
-            powershell mono-devel || true
-          sudo apt-get autoremove -y && sudo apt-get clean
-          df -h /
-
-      - name: Setup Swap (16GB)
-        run: |
-          sudo swapoff /mnt/swapfile 2>/dev/null || true
-          sudo rm -f /mnt/swapfile
-          sudo fallocate -l 16G /mnt/swapfile \
-            || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=16384
-          sudo chmod 600 /mnt/swapfile
-          sudo mkswap /mnt/swapfile && sudo swapon /mnt/swapfile
-          free -h
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git curl wget bc bison flex libssl-dev make libelf-dev \
-            python3 python3-pip python-is-python3 zip unzip cpio \
-            kmod rsync lz4 jq patch binutils libncurses-dev \
-            pkg-config ninja-build zstd aria2 p7zip-full \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-
-      - name: Install repo Tool
-        run: |
-          mkdir -p ~/bin
-          curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-          chmod a+x ~/bin/repo
-          echo "$HOME/bin" >> $GITHUB_PATH
-
-      - name: Download Custom Toolchain
-        if: inputs.clang_toolchain != 'bazel-default' && inputs.clang_toolchain != ''
-        run: |
-          set -euo pipefail
-          mkdir -p prebuilts/clang/host/linux-x86
-          cd prebuilts/clang/host/linux-x86
-          TOOLCHAIN="${{ inputs.clang_toolchain }}"
-
-          smart_extract() {
-            local archive="$1" dest="$2"
-            mkdir -p "$dest"
-            echo "  → Attempt 1: Extracting with --strip-components=1..."
-            tar -xf "$archive" -C "$dest" --strip-components=1 2>/dev/null
-            if [ -f "$dest/bin/clang" ] || [ -L "$dest/bin/clang" ]; then
-              echo "  ✅ Found bin/clang after strip (nested archive)"
-              rm -f "$archive"; return 0
-            fi
+          chmod +x "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh"
+          "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh" \
+            "core" \
+            "${{ env.ANDROID_VERSION }}" \
+            "${{ env.KERNEL_VERSION }}" \
+            "${{ github.workspace }}" \
+            "${{ env.GITHUB_ENV }}" \
+            "${{ inputs.clang_toolchain }}" \
+            "${{ inputs.ksu_method }}" \
+            "${{ inputs.with_susfs }}"
             echo "  → Attempt 1 failed. Trying flat extraction..."
             rm -rf "$dest"/*
             tar -xf "$archive" -C "$dest" 2>/dev/null
@@ -660,19 +614,6 @@ jobs:
             echo "✅ SUSFS integration complete"
           fi
 
-      - name: Apply Custom Patches
-        run: |
-          cd kernel/common
-          if [ -d "$GITHUB_WORKSPACE/patches" ] && ls $GITHUB_WORKSPACE/patches/*.patch 1>/dev/null 2>&1; then
-            for patch_file in $GITHUB_WORKSPACE/patches/*.patch; do
-              echo "Applying $patch_file"
-              patch -p1 --forward --no-backup-if-mismatch < "$patch_file" \
-                || echo "  ⚠️ Patch failed or already applied (skipping)"
-            done
-          else
-            echo "No custom patches found, skipping."
-          fi
-
       - name: Configure Kernel
         run: |
           set -euo pipefail
@@ -784,55 +725,6 @@ jobs:
 
           git add arch/arm64/configs/gki_defconfig
           echo "✅ Defconfig finalized and added to git"
-
-      - name: Patch Build System
-        run: |
-          cd kernel/common
-
-          # Kita menggunakan skrip Python 3 inline tanpa dependensi tambahan untuk melakukan modifikasi sistem build.
-          # Skrip ini memodifikasi BUILD.bazel dan modules.bzl secara aman dan konsisten.
-          python3 "$GITHUB_WORKSPACE/workflow_scripts/patch_build_system.py"
-
-          # Bypass pemeriksaan vermagic agar semua modul driver vendor HyperOS (.ko) dapat dimuat dengan aman
-          python3 "$GITHUB_WORKSPACE/workflow_scripts/patch_vermagic.py"
-
-          git add BUILD.bazel modules.bzl 2>/dev/null || true
-          for f in build.config.gki build.config.gki.aarch64; do
-            if [ -f "$f" ]; then
-              sed -i '/check_defconfig/d' "$f"
-              sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' "$f"
-              sed -i '/TRIM_NONLISTED_KMI/d' "$f"
-              sed -i '/KMI_SYMBOL_LIST/d' "$f"
-              echo "KMI_SYMBOL_LIST_STRICT_MODE=false" >> "$f"
-              echo "TRIM_NONLISTED_KMI=false" >> "$f"
-              git add "$f"
-            fi
-          done
-          # Lewati pemeriksaan proteksi simbol ABI untuk menghindari kegagalan kompilasi akibat patch kustom
-          [ -f "../build/kernel/abi/check_buildtime_symbol_protection.py" ] \
-            && perl -i -pe 's/^(\s*)return 1$/$1return 0/g' \
-              "../build/kernel/abi/check_buildtime_symbol_protection.py" \
-            || true
-
-          # Hilangkan teks '-maybe-dirty' dari stempel versi SCM kernel
-          if [ -f "../build/kernel/kleaf/impl/stamp.bzl" ]; then
-            sed -i '/stable_scmversion_cmd/s/-maybe-dirty//g' \
-              ../build/kernel/kleaf/impl/stamp.bzl
-          fi
-
-          # Amankan versi lokal agar tidak dianggap dirty saat pelacakan git di repo common
-          sed -i 's/-dirty//' scripts/setlocalversion 2>/dev/null || true
-          git add scripts/setlocalversion 2>/dev/null || true
-          : > .scmversion
-          git add .scmversion 2>/dev/null || true
-
-          # Bersihkan direktori .git yang tidak terpakai demi menghemat penyimpanan disk runner (Bazel membutuhkan ruang kosong yang besar)
-          # PENTING: Jangan hapus folder .git di kernel/common karena Bazel/Kleaf memerlukannya untuk memproses metadata.
-          cd "$GITHUB_WORKSPACE"
-          rm -rf kernel/KernelSU-Next/.git 2>/dev/null || true
-          rm -rf kernel/susfs4ksu/.git 2>/dev/null || true
-          rm -rf prebuilts/clang/host/linux-x86/*/.git 2>/dev/null || true
-          echo "✅ Extra disk space freed by removing unused .git folders"
 
       - name: Build Kernel (Bazel)
         if: inputs.clang_toolchain == 'bazel-default' || inputs.clang_toolchain == ''

@@ -52,40 +52,18 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
             --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${MSG}" --form-string "parse_mode=HTML"
 
-      - name: Maximize Disk Space
+      - name: Prepare Kernel Build (Common)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /usr/share/swift /usr/share/miniconda \
-            /usr/local/share/chromium /usr/local/share/powershell
-          sudo apt-get remove -y '^dotnet-.*' '^llvm-.*' 'php.*' \
-            azure-cli google-cloud-cli google-chrome-stable firefox \
-            powershell mono-devel || true
-          sudo apt-get autoremove -y && sudo apt-get clean
-
-      - name: Setup Swap (16GB)
-        run: |
-          sudo swapoff /mnt/swapfile 2>/dev/null || true
-          sudo rm -f /mnt/swapfile
-          sudo fallocate -l 16G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=16384
-          sudo chmod 600 /mnt/swapfile
-          sudo mkswap /mnt/swapfile && sudo swapon /mnt/swapfile
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git curl wget bc bison flex libssl-dev make libelf-dev \
-            python3 python3-pip python-is-python3 zip unzip cpio \
-            kmod rsync lz4 jq patch binutils libncurses-dev \
-            pkg-config ninja-build zstd aria2 p7zip-full \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-
-      - name: Install repo Tool
-        run: |
-          mkdir -p ~/bin
-          curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-          chmod a+x ~/bin/repo
-          echo "$HOME/bin" >> $GITHUB_PATH
+          chmod +x "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh"
+          "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh" \
+            "rescue" \
+            "${{ env.ANDROID_VERSION }}" \
+            "${{ env.KERNEL_VERSION }}" \
+            "${{ github.workspace }}" \
+            "${{ env.GITHUB_ENV }}" \
+            "bazel-default" \
+            "kernelsu-next" \
+            "false"
 
       - name: Restore Bazel Cache
         uses: actions/cache@v4
@@ -95,86 +73,6 @@ jobs:
           restore-keys: |
             gki-rescue-bazel-
             gki-bazel-
-
-      - name: Sync Android Common Kernel
-        run: |
-          mkdir -p kernel && cd kernel
-          repo init -u https://android.googlesource.com/kernel/manifest \
-            -b common-${ANDROID_VERSION}-${KERNEL_VERSION} --depth=1
-          SYNC_OK=false
-          for attempt in 1 2 3; do
-            echo "repo sync attempt $attempt/3..."
-            if repo sync -c -j$(nproc) --no-tags --no-clone-bundle --force-sync; then
-              SYNC_OK=true; break
-            fi
-            sleep 30
-          done
-          if [ "$SYNC_OK" = "false" ]; then
-            echo "❌ repo sync gagal"
-            exit 1
-          fi
-          cd common && KERNEL_COMMIT=$(git log --oneline -1)
-          echo "✅ Using tip of branch ($KERNEL_COMMIT)"
-
-      - name: Set KMI Generation
-        run: |
-          set -euo pipefail
-          cd kernel/common
-          DETECTED_KMI=""
-          [ -f "build.config.common" ] && DETECTED_KMI=$(grep -oP '(?<=KMI_GENERATION=)\d+' build.config.common | head -n1)
-          [ -z "$DETECTED_KMI" ] && [ -f "build.config.gki" ] && DETECTED_KMI=$(grep -oP '(?<=KMI_GENERATION=)\d+' build.config.gki | head -n1)
-          if [ -z "$DETECTED_KMI" ]; then
-            STAMP_FILE="../build/kernel/kleaf/impl/stamp.bzl"
-            [ -f "$STAMP_FILE" ] && DETECTED_KMI=$(grep -oP '(?<=kmi_generation = ")\d+' "$STAMP_FILE" | head -n1)
-          fi
-          [ -z "$DETECTED_KMI" ] && DETECTED_KMI="8"
-          echo "KMI_GENERATION=$DETECTED_KMI" >> $GITHUB_ENV
-          [ -f "build.config.common" ] && sed -i "s/KMI_GENERATION=.*/KMI_GENERATION=${DETECTED_KMI}/" build.config.common
-          for f in build.config.gki build.config.gki.aarch64; do
-            [ -f "$f" ] && grep -q "KMI_GENERATION" "$f" && sed -i "s/KMI_GENERATION=.*/KMI_GENERATION=${DETECTED_KMI}/" "$f"
-          done
-          STAMP_FILE="../build/kernel/kleaf/impl/stamp.bzl"
-          [ -f "$STAMP_FILE" ] && grep -q "kmi_generation" "$STAMP_FILE" \
-            && sed -i "s/kmi_generation = \"[0-9]*\"/kmi_generation = \"${DETECTED_KMI}\"/" "$STAMP_FILE" || true
-
-      - name: Setup KernelSU-Next
-        run: |
-          set -euo pipefail
-          cd kernel
-          git clone https://github.com/KernelSU-Next/KernelSU-Next.git -b dev KernelSU-Next
-          GIT_COUNT=$(cd KernelSU-Next && git rev-list --count HEAD 2>/dev/null || echo "0")
-          [ "$GIT_COUNT" -gt 1 ] && KSU_VERSION=$((30000 + GIT_COUNT)) || KSU_VERSION="30000"
-          KSU_TAG=$(cd KernelSU-Next && git describe --abbrev=0 --tags 2>/dev/null || echo "v${KSU_VERSION}")
-          rm -rf common/drivers/kernelsu
-          cp -r KernelSU-Next/kernel common/drivers/kernelsu
-          cp -r KernelSU-Next/uapi common/drivers/kernelsu/uapi 2>/dev/null || true
-          find common/drivers/kernelsu -name "BUILD.bazel" -delete
-          find common/drivers/kernelsu -name "BUILD" -delete
-          sed -i '/depends on EXT4_FS/d' common/drivers/kernelsu/Kconfig
-          KBUILD_FILE="common/drivers/kernelsu/Kbuild"
-          if [ -f "$KBUILD_FILE" ]; then
-            sed -i '/# Injected by CI/d' "$KBUILD_FILE"
-            sed -i '/ccflags-y += -UKSU_VERSION/d' "$KBUILD_FILE"
-            python3 "$GITHUB_WORKSPACE/workflow_scripts/patch_kbuild.py" "$KBUILD_FILE" "$GIT_COUNT" "$KSU_VERSION" "$KSU_TAG"
-            printf '#undef KSU_VERSION\n#define KSU_VERSION %s\n#undef KSU_VERSION_TAG\n#define KSU_VERSION_TAG "%s"\n' \
-              "${KSU_VERSION}" "${KSU_TAG}" > common/drivers/kernelsu/ksu_version.h
-            sed -i "1i ccflags-y += -Wno-macro-redefined -include \$(srctree)/drivers/kernelsu/ksu_version.h" "$KBUILD_FILE"
-          fi
-          grep -q 'CONFIG_KSU' common/drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> common/drivers/Makefile
-          sed -i '/drivers\/kernelsu\/Kconfig/d' common/drivers/Kconfig
-          python3 -c "with open('common/drivers/Kconfig', 'r+') as f: c = f.read(); p = c.rfind('endmenu'); f.seek(0); f.write(c[:p] + 'source \"drivers/kernelsu/Kconfig\"\n\n' + c[p:]) if p != -1 else f.write(c)"
-          cd common && git add -f drivers/Makefile drivers/Kconfig && git add -f drivers/kernelsu/ 2>/dev/null || true
-          cd ..
-          echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
-
-      - name: Apply Custom Patches
-        run: |
-          cd kernel/common
-          if [ -d "$GITHUB_WORKSPACE/patches" ] && ls $GITHUB_WORKSPACE/patches/*.patch 1>/dev/null 2>&1; then
-            for p in $GITHUB_WORKSPACE/patches/*.patch; do
-              patch -p1 --forward --no-backup-if-mismatch < "$p" || echo "⚠️ skipping $p"
-            done
-          fi
 
       - name: Configure Kernel (Minimal Rescue)
         run: |
@@ -218,32 +116,6 @@ jobs:
           add_cfg "CONFIG_PSTORE_RAM_CONSOLE_SIZE=0x40000"; add_cfg "CONFIG_PSTORE_RAM_PMSG_SIZE=0x80000"
 
           git add arch/arm64/configs/gki_defconfig
-
-      - name: Patch Build System
-        run: |
-          cd kernel/common
-          python3 "$GITHUB_WORKSPACE/workflow_scripts/patch_build_system.py"
-          
-          # Bypass pemeriksaan vermagic agar semua modul driver vendor HyperOS (.ko) dapat dimuat dengan aman
-          python3 "$GITHUB_WORKSPACE/workflow_scripts/patch_vermagic.py"
-          
-          git add BUILD.bazel modules.bzl 2>/dev/null || true
-          for f in build.config.gki build.config.gki.aarch64; do
-            if [ -f "$f" ]; then
-              sed -i '/check_defconfig/d' "$f"; sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' "$f"
-              sed -i '/TRIM_NONLISTED_KMI/d' "$f"; sed -i '/KMI_SYMBOL_LIST/d' "$f"
-              echo "KMI_SYMBOL_LIST_STRICT_MODE=false" >> "$f"; echo "TRIM_NONLISTED_KMI=false" >> "$f"
-              git add "$f"
-            fi
-          done
-          [ -f "../build/kernel/abi/check_buildtime_symbol_protection.py" ] \
-            && perl -i -pe 's/^(\s*)return 1$/$1return 0/g' "../build/kernel/abi/check_buildtime_symbol_protection.py" || true
-          [ -f "../build/kernel/kleaf/impl/stamp.bzl" ] \
-            && sed -i '/stable_scmversion_cmd/s/-maybe-dirty//g' ../build/kernel/kleaf/impl/stamp.bzl
-          sed -i 's/-dirty//' scripts/setlocalversion 2>/dev/null || true
-          git add scripts/setlocalversion 2>/dev/null || true
-          : > .scmversion && git add .scmversion 2>/dev/null || true
-          cd "$GITHUB_WORKSPACE" && rm -rf kernel/KernelSU-Next/.git 2>/dev/null || true
 
       - name: Build Kernel (Bazel)
         run: |
