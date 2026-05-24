@@ -1182,14 +1182,15 @@ jobs:
           tag_name: "${{ inputs.release_tag }}"
           name: "Epitaph Kernel ${{ inputs.release_tag }}"
           body: |
-            ### 📦 Epitaph-${{ inputs.custom_name }}
-            - **Type:** GKI 6.6 ${{ inputs.with_susfs == 'true' && '⚡ + SUSFS' || '🛡️ (No SUSFS)' }}
-            - **Root:** ${{ inputs.ksu_method }} v${{ env.KSU_VERSION }}
+            ### 📦 Epitaph Kernel ${{ inputs.release_tag }}
+            - **Type:** GKI 6.6
+            - **Root:** KernelSU-Next v${{ env.KSU_VERSION }}
             - **Governor:** schedutil (Optimized)
             - **KMI:** ${{ env.KMI_GENERATION }}
-            - **Toolchain:** ${{ inputs.clang_toolchain }}
-              - *${{ env.TOOLCHAIN_VER }}*
             - **Built:** ${{ env.BUILD_TIME }} (run #${{ github.run_number }})
+
+            > 📋 **Tersedia dalam berbagai varian toolchain & SUSFS.**
+            > Pilih file zip yang sesuai kebutuhan lo dari daftar Assets di bawah.
 
             ---
 
@@ -1212,4 +1213,86 @@ jobs:
           draft: false
           prerelease: false
 
-# Telegram notifications moved to caller build_manager_gki.yml to notify per-run instead of per-matrix-build.
+      # ─── TELEGRAM: Upload zip ke channel update (per-build) ──────────
+      - name: Send to Telegram (Success)
+        if: success()
+        continue-on-error: true
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ] && exit 0
+          ZIP_FILE=$(ls dist/*.zip 2>/dev/null | head -n 1)
+          [ -z "$ZIP_FILE" ] && exit 0
+          ZIP_NAME=$(basename "$ZIP_FILE")
+          ZIP_BYTES=$(du -b "$ZIP_FILE" | cut -f1 || echo "0")
+          ZIP_SIZE=$(du -h "$ZIP_FILE" | cut -f1 || echo "?")
+          SUSFS_LABEL="No"
+          [ "${{ inputs.with_susfs }}" = "true" ] && SUSFS_LABEL="Yes"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
+          CAPTION=$(printf '<b>👑 Epitaph Kernel — Build Done</b>\n\n<b>Kernel:</b> %s\n<b>Version:</b> v%s\n<b>Developer:</b> ${{ inputs.author_name }}\n<b>Type:</b> GKI 6.6\n<b>Root:</b> ${{ inputs.ksu_method }} v%s\n<b>Governor:</b> schedutil\n<b>SUSFS:</b> %s\n<b>KMI:</b> %s\n<b>Toolchain:</b> ${{ inputs.clang_toolchain }}\n  └ <i>%s</i>\n<b>Size:</b> %s\n<b>Built:</b> %s\n\n<a href="%s">📦 GitHub Release</a>' \
+            "$ZIP_NAME" "${{ github.run_number }}" "${{ env.KSU_VERSION }}" "$SUSFS_LABEL" \
+            "${{ env.KMI_GENERATION }}" "${{ env.TOOLCHAIN_VER }}" "$ZIP_SIZE" "${{ env.BUILD_TIME }}" "$RELEASE_URL")
+          TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
+          TG_LIMIT=52428800
+          if [ "$ZIP_BYTES" -le "$TG_LIMIT" ]; then
+            HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TG_API}/sendDocument" \
+              --form-string "chat_id=${TG_CHAT_ID}" \
+              -F "document=@${ZIP_FILE};filename=${ZIP_NAME}" \
+              --form-string "caption=${CAPTION}" --form-string "parse_mode=HTML" || echo "000")
+            [ "$HTTP" != "200" ] && curl -s -X POST "${TG_API}/sendMessage" \
+              --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
+          else
+            curl -s -X POST "${TG_API}/sendMessage" \
+              --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
+          fi
+
+      # ─── TELEGRAM: Kirim error log ke channel error dump (per-build) ──
+      - name: Send Error Log to Telegram
+        if: failure()
+        continue-on-error: true
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ERROR_CHAT_ID: ${{ secrets.TELEGRAM_ERROR_CHAT_ID }}
+        run: |
+          [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
+          TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
+          ACTIONS_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SUSFS_LABEL="No"
+          [ "${{ inputs.with_susfs }}" = "true" ] && SUSFS_LABEL="Yes"
+
+          ERROR_LOG="/tmp/epitaph_error.log"
+          : > "$ERROR_LOG"
+          for log in "kernel/build.log" "kernel/common/build.log"; do
+            if [ -f "$log" ]; then
+              echo "=== $(basename $log) ===" >> "$ERROR_LOG"
+              grep -iE "error:|fatal:|undefined reference|cannot find|failed|❌" "$log" | tail -60 >> "$ERROR_LOG" 2>/dev/null || true
+              echo "--- last 80 lines ---" >> "$ERROR_LOG"
+              tail -80 "$log" >> "$ERROR_LOG" 2>/dev/null || true
+            fi
+          done
+          REJ_FILES=$(find kernel/common -name "*.rej" 2>/dev/null | head -5)
+          if [ -n "$REJ_FILES" ]; then
+            echo "=== REJECTED PATCHES ===" >> "$ERROR_LOG"
+            for rej in $REJ_FILES; do echo "--- $rej ---" >> "$ERROR_LOG"; cat "$rej" >> "$ERROR_LOG"; done
+          fi
+          [ ! -s "$ERROR_LOG" ] && printf "No build.log found.\nCheck: %s\n" "$ACTIONS_URL" > "$ERROR_LOG"
+
+          HEADER=$(printf '<b>❌ Epitaph Kernel — Build FAILED</b>\n\n<b>Kernel:</b> %s\n<b>Version:</b> v%s\n<b>Developer:</b> ${{ inputs.author_name }}\n<b>Root:</b> ${{ inputs.ksu_method }}\n<b>SUSFS:</b> %s\n<b>Toolchain:</b> ${{ inputs.clang_toolchain }}\n<b>Triggered by:</b> ${{ github.actor }}\n\n<a href="%s">🔍 Full log</a>' \
+            "${{ env.ZIP_NAME }}" "${{ github.run_number }}" "$SUSFS_LABEL" "$ACTIONS_URL")
+          curl -s -X POST "${TG_API}/sendMessage" \
+            --form-string "chat_id=${TG_ERROR_CHAT_ID}" --form-string "text=${HEADER}" --form-string "parse_mode=HTML"
+
+          LOG_FILENAME="${{ env.ZIP_NAME }}-Error.log"
+          cp "$ERROR_LOG" "/tmp/${LOG_FILENAME}"
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TG_API}/sendDocument" \
+            --form-string "chat_id=${TG_ERROR_CHAT_ID}" \
+            -F "document=@/tmp/${LOG_FILENAME};filename=${LOG_FILENAME}" \
+            --form-string "caption=📋 Error log — ${{ env.ZIP_NAME }}" --form-string "parse_mode=HTML" || echo "000")
+          if [ "$HTTP" != "200" ]; then
+            SNIPPET=$(tail -30 "$ERROR_LOG" | head -c 3500)
+            curl -s -X POST "${TG_API}/sendMessage" \
+              --form-string "chat_id=${TG_ERROR_CHAT_ID}" \
+              --form-string "text=$(printf '<b>📋 Error snippet:</b>\n<pre>%s</pre>' "$SNIPPET")" \
+              --form-string "parse_mode=HTML"
+          fi
