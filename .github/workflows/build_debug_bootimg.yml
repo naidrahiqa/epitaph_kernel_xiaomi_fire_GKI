@@ -45,12 +45,16 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ] && exit 0
+          [ -z "$TG_BOT_TOKEN" ] && exit 0
+          
+          # Gunakan secret jika ada, jika tidak default ke username publik channel
+          TARGET_CHAT_ID="${TG_CHAT_ID:-@naiprojectupdate}"
+          
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           MSG=$(printf '<b>🚀 Epitaph Rescue Kernel — Build Starting</b>\n\n<b>Type:</b> Debug boot.img (Rescue)\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Toolchain:</b> Bazel (AOSP Clang)\n<b>Root:</b> KernelSU-Next\n<b>PStore:</b> ✅ Aktif\n<b>Triggered by:</b> %s\n<b>Build Date:</b> %s\n\n<a href="%s">🔍 Monitor Build Progress</a>' \
             "${{ inputs.release_tag }}" "${{ github.actor }}" "${{ env.BUILD_TIME }}" "$RUN_URL")
           curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
-            --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${MSG}" --form-string "parse_mode=HTML"
+            --form-string "chat_id=${TARGET_CHAT_ID}" --form-string "text=${MSG}" --form-string "parse_mode=HTML"
 
       - name: Maximize Disk Space
         run: |
@@ -351,9 +355,13 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ] && exit 0
+          [ -z "$TG_BOT_TOKEN" ] && exit 0
           BOOT_FILE="dist/${RESCUE_NAME}-boot.img"
           [ ! -f "$BOOT_FILE" ] && exit 0
+          
+          # Gunakan secret jika ada, jika tidak default ke username publik channel
+          TARGET_CHAT_ID="${TG_CHAT_ID:-@naiprojectupdate}"
+          
           BOOT_SIZE=$(du -h "$BOOT_FILE" | cut -f1)
           BOOT_BYTES=$(du -b "$BOOT_FILE" | cut -f1)
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
@@ -364,14 +372,14 @@ jobs:
           TG_LIMIT=52428800
           if [ "$BOOT_BYTES" -le "$TG_LIMIT" ]; then
             HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TG_API}/sendDocument" \
-              --form-string "chat_id=${TG_CHAT_ID}" \
+              --form-string "chat_id=${TARGET_CHAT_ID}" \
               -F "document=@${BOOT_FILE};filename=${RESCUE_NAME}-boot.img" \
               --form-string "caption=${CAPTION}" --form-string "parse_mode=HTML" || echo "000")
             [ "$HTTP" != "200" ] && curl -s -X POST "${TG_API}/sendMessage" \
-              --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
+              --form-string "chat_id=${TARGET_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
           else
             curl -s -X POST "${TG_API}/sendMessage" \
-              --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
+              --form-string "chat_id=${TARGET_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
           fi
 
       - name: Send Error Log to Telegram (Error Dump Channel)
@@ -381,9 +389,12 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_ERROR_CHAT_ID: ${{ secrets.TELEGRAM_ERROR_CHAT_ID }}
         run: |
-          [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
+          [ -z "$TG_BOT_TOKEN" ] && exit 0
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
           ACTIONS_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          # Gunakan secret jika ada, jika tidak default ke username publik channel
+          TARGET_ERROR_CHAT_ID="${TG_ERROR_CHAT_ID:-@naierrordump}"
 
           ERROR_LOG="/tmp/epitaph_error.log"
           : > "$ERROR_LOG"
@@ -400,18 +411,18 @@ jobs:
           HEADER=$(printf '<b>❌ Epitaph Rescue Kernel — Build FAILED</b>\n\n<b>Kernel:</b> %s\n<b>Version:</b> v%s\n<b>Developer:</b> Naidrahiqa\n<b>Toolchain:</b> Bazel (AOSP Clang)\n<b>Root:</b> KernelSU-Next\n<b>Built:</b> %s\n<b>Triggered by:</b> %s\n\n<a href="%s">🔍 Full log di GitHub Actions</a>' \
             "${RESCUE_NAME}" "${{ github.run_number }}" "${{ env.BUILD_TIME }}" "${{ github.actor }}" "$ACTIONS_URL")
           curl -s -X POST "${TG_API}/sendMessage" \
-            --form-string "chat_id=${TG_ERROR_CHAT_ID}" --form-string "text=${HEADER}" --form-string "parse_mode=HTML"
+            --form-string "chat_id=${TARGET_ERROR_CHAT_ID}" --form-string "text=${HEADER}" --form-string "parse_mode=HTML"
 
           LOG_FILENAME="${RESCUE_NAME}-Error.log"
           cp "$ERROR_LOG" "/tmp/${LOG_FILENAME}"
           HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TG_API}/sendDocument" \
-            --form-string "chat_id=${TG_ERROR_CHAT_ID}" \
+            --form-string "chat_id=${TARGET_ERROR_CHAT_ID}" \
             -F "document=@/tmp/${LOG_FILENAME};filename=${LOG_FILENAME}" \
             --form-string "caption=📋 Error log — ${RESCUE_NAME}" --form-string "parse_mode=HTML" || echo "000")
           if [ "$HTTP" != "200" ]; then
             SNIPPET=$(tail -30 "$ERROR_LOG" | head -c 3500)
             curl -s -X POST "${TG_API}/sendMessage" \
-              --form-string "chat_id=${TG_ERROR_CHAT_ID}" \
+              --form-string "chat_id=${TARGET_ERROR_CHAT_ID}" \
               --form-string "text=$(printf '<b>📋 Error snippet:</b>\n<pre>%s</pre>' "$SNIPPET")" \
               --form-string "parse_mode=HTML"
           fi
