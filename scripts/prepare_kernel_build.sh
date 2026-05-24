@@ -80,6 +80,7 @@ install_repo() {
   mkdir -p ~/bin
   curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
   chmod a+x ~/bin/repo
+  export PATH="$HOME/bin:$PATH"
   echo "$HOME/bin" >> "$GITHUB_PATH"
 }
 
