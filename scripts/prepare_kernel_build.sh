@@ -138,7 +138,8 @@ download_toolchain() {
         | jq -r '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url' \
         | head -n1)
       [ -z "$ZYASSET_URL" ] && echo "ERROR: Failed to get ZyClang URL" && exit 1
-      aria2c -x16 -s16 -k1M -o clang.tar.gz "$ZYASSET_URL"
+      # Tambahkan opsi retry-wait=5 dan max-tries=10 untuk menangani error transient HTTP 502/503 di GitHub Releases
+      aria2c -x16 -s16 -k1M --retry-wait=5 --max-tries=10 -o clang.tar.gz "$ZYASSET_URL"
       smart_extract clang.tar.gz clang-zyc
       CLANG_PATH="$GITHUB_WORKSPACE/prebuilts/clang/host/linux-x86/clang-zyc"
       echo "CUSTOM_CLANG_PATH=$CLANG_PATH" >> "$GITHUB_ENV"
@@ -152,7 +153,8 @@ download_toolchain() {
       ;;
     weebx-latest)
       WEEBX_URL=$(curl -s https://api.github.com/repos/XSans0/WeebX-Clang/releases/latest | jq -r '.assets[] | select(.name | contains("WeebX-Clang")) | .browser_download_url' | head -n1)
-      aria2c -x16 -s16 -k1M -o clang.tar.gz "$WEEBX_URL"
+      # Tambahkan opsi retry-wait=5 dan max-tries=10 untuk menangani error transient HTTP 502/503 di GitHub Releases
+      aria2c -x16 -s16 -k1M --retry-wait=5 --max-tries=10 -o clang.tar.gz "$WEEBX_URL"
       smart_extract clang.tar.gz clang-weebx
       CLANG_PATH="$GITHUB_WORKSPACE/prebuilts/clang/host/linux-x86/clang-weebx"
       echo "CUSTOM_CLANG_PATH=$CLANG_PATH" >> "$GITHUB_ENV"
@@ -160,7 +162,8 @@ download_toolchain() {
       ;;
     neutron-latest)
       NEUTRON_ASSET=$(curl -sL https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases/latest | jq -r '.assets[] | select(.name | contains("neutron-clang")) | .browser_download_url' | head -n1)
-      aria2c -x16 -s16 -k1M -o clang.tar.gz "$NEUTRON_ASSET"
+      # Tambahkan opsi retry-wait=5 dan max-tries=10 untuk menangani error transient HTTP 502/503 di GitHub Releases
+      aria2c -x16 -s16 -k1M --retry-wait=5 --max-tries=10 -o clang.tar.gz "$NEUTRON_ASSET"
       smart_extract clang.tar.gz clang-neutron
       CLANG_PATH="$GITHUB_WORKSPACE/prebuilts/clang/host/linux-x86/clang-neutron"
       echo "CUSTOM_CLANG_PATH=$CLANG_PATH" >> "$GITHUB_ENV"

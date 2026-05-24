@@ -55,7 +55,9 @@ jobs:
       - name: Prepare Kernel Build (Common)
         run: |
           chmod +x "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh"
-          "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh" \
+          mkdir -p kernel
+          # Tangkap log persiapan build ke file sementara agar bisa didiagnosis jika terjadi kegagalan
+          if ! "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh" \
             "rescue" \
             "${{ env.ANDROID_VERSION }}" \
             "${{ env.KERNEL_VERSION }}" \
@@ -63,7 +65,13 @@ jobs:
             "$GITHUB_ENV" \
             "bazel-default" \
             "kernelsu-next" \
-            "false"
+            "false" > /tmp/prep_build.log 2>&1; then
+              cat /tmp/prep_build.log
+              echo "❌ ERROR: prepare_kernel_build.sh failed!" > kernel/build.log
+              tail -n 100 /tmp/prep_build.log >> kernel/build.log
+              exit 1
+          fi
+          cat /tmp/prep_build.log
 
       - name: Restore Bazel Cache
         uses: actions/cache@v4
