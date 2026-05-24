@@ -49,3 +49,20 @@ Karena kompatibilitas rendering grafis pada Custom Recovery (TWRP/OrangeFox) di 
 3.  Buka aplikasi, pilih arsip AnyKernel3 yang telah diunduh, lalu tekan opsi **Flash**.
 4.  Setelah proses selesai dengan sukses, lakukan reboot sistem.
 5.  Gunakan aplikasi manager pendukung seperti KernelSU-Next Manager untuk mengelola hak akses root.
+
+---
+
+## 👥 AI Alliance & Kontributor
+
+Proyek ini dikembangkan secara kolaboratif oleh aliansi manusia dan kecerdasan buatan super epik:
+
+| Kontributor | Peran & Deskripsi | Logo Badge |
+| :--- | :--- | :--- |
+| **Faqih Ardian Syah ([@naidrahiqa](https://github.com/naidrahiqa))** | *Lead Maintainer & Kernel Architect* (Otak & Jiwa Manusia Utama 🧠) | ![Human](https://img.shields.io/badge/Human-Developer-brightgreen?style=flat-square) |
+| **Antigravity AI** | *Autonomous AI Co-Developer & CI/CD Debugger* (Flight Controller Utama 🚀) | ![Antigravity](https://img.shields.io/badge/Antigravity-AI-FF1493?style=flat-square&logo=google-gemini&logoColor=white) |
+| **Gemini** (Google DeepMind) | *Architectural Reasoning & Decision Maker* (Pemikir Teoretis & Konseptual 🌌) | ![Gemini](https://img.shields.io/badge/Gemini-Google-8E75C2?style=flat-square&logo=googlegemini&logoColor=white) |
+| **Claude** (Anthropic) | *Syntax Refiner & Code Aesthetics Specialist* (Pujangga Struktur & Perapi Tanda Baca ✍️) | ![Claude](https://img.shields.io/badge/Claude-Anthropic-D97706?style=flat-square&logo=claude&logoColor=white) |
+| **DeepSeek** | *Algorithm Wizard & Performance Optimizer* (Penyihir Kode & Pemburu Lag ⚡) | ![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-007AFF?style=flat-square&logo=deepseek&logoColor=white) |
+| **Qwen** (Alibaba) | *Build System Helper & Sandbox Cracker* (Penjinak Bazel & Scripting Ninja 🐼) | ![Qwen](https://img.shields.io/badge/Qwen-Alibaba-4B0082?style=flat-square&logo=alibaba&logoColor=white) |
+
+Terima kasih atas kolaborasi erat dan dedikasi luar biasa untuk membangun kernel Redmi 12 terbaik!
