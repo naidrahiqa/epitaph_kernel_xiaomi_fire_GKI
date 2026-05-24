@@ -41,7 +41,15 @@ To prevent immediate device bootloops on boot, the kernel configuration (`gki_de
 
 ---
 
+## 🔒 Rule 4: Vermagic Check Bypass (Stock Modules Compatibility)
+* **The WiFi/Hotspot Issue:** Precompiled proprietary vendor modules (like MediaTek's `wlan.ko` for WiFi) are compiled against the stock Xiaomi kernel version (e.g. `6.6.86-android15-8-gXXXXXX`). When compiling Epitaph from Google's GKI source (`common-android15-6.6`), the kernel version mismatch (`6.6.138` vs `6.6.86`) causes the module loader to reject these modules, breaking WiFi and Hotspot completely!
+* **Bypass via Source Patching:** To allow stock Xiaomi drivers to load on custom compiled kernels, both the Main Kernel and Rescue Kernel workflows execute **`patch_vermagic.py`**.
+* **Do NOT remove `patch_vermagic.py`:** This python script automatically overrides the `same_magic` helper function inside the kernel's `kernel/module/internal.h` or `kernel/module/main.c` to always return `1` (success). This completely bypasses the vermagic string mismatch checks and lets stock modular drivers load safely.
+
+---
+
 ## 📦 File Reference
 * [_build_kernel_core.yml](file:///d:/Project%20Coding/2026/4%20April/kernel%20redmi%2012/.github/workflows/_build_kernel_core.yml): Core GitHub Actions compilation workflow recipe.
 * [build_manager_gki.yml](file:///d:/Project%20Coding/2026/4%20April/kernel%20redmi%2012/.github/workflows/build_manager_gki.yml): Dispatcher matrix control.
 * [build_debug_bootimg.yml](file:///d:/Project%20Coding/2026/4%20April/kernel%20redmi%2012/.github/workflows/build_debug_bootimg.yml): Safe Rescue boot compiler recipe.
+* [patch_vermagic.py](file:///d:/Project%20Coding/2026/4%20April/kernel%20redmi%2012/workflow_scripts/patch_vermagic.py): Python script that automatically bypasses the kernel vermagic checks.
