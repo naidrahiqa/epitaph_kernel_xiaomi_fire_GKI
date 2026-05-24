@@ -1221,10 +1221,14 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ] && exit 0
+          [ -z "$TG_BOT_TOKEN" ] && exit 0
           ZIP_FILE=$(ls dist/*.zip 2>/dev/null | head -n 1)
           [ -z "$ZIP_FILE" ] && exit 0
           ZIP_NAME=$(basename "$ZIP_FILE")
+          
+          # Gunakan secret jika ada, jika tidak default ke username publik channel
+          TARGET_CHAT_ID="${TG_CHAT_ID:-@naiprojectupdate}"
+          
           ZIP_BYTES=$(du -b "$ZIP_FILE" | cut -f1 || echo "0")
           ZIP_SIZE=$(du -h "$ZIP_FILE" | cut -f1 || echo "?")
           SUSFS_LABEL="No"
@@ -1237,14 +1241,14 @@ jobs:
           TG_LIMIT=52428800
           if [ "$ZIP_BYTES" -le "$TG_LIMIT" ]; then
             HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TG_API}/sendDocument" \
-              --form-string "chat_id=${TG_CHAT_ID}" \
+              --form-string "chat_id=${TARGET_CHAT_ID}" \
               -F "document=@${ZIP_FILE};filename=${ZIP_NAME}" \
               --form-string "caption=${CAPTION}" --form-string "parse_mode=HTML" || echo "000")
             [ "$HTTP" != "200" ] && curl -s -X POST "${TG_API}/sendMessage" \
-              --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
+              --form-string "chat_id=${TARGET_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
           else
             curl -s -X POST "${TG_API}/sendMessage" \
-              --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
+              --form-string "chat_id=${TARGET_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
           fi
 
       # ─── TELEGRAM: Kirim error log ke channel error dump (per-build) ──
@@ -1255,11 +1259,14 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_ERROR_CHAT_ID: ${{ secrets.TELEGRAM_ERROR_CHAT_ID }}
         run: |
-          [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
+          [ -z "$TG_BOT_TOKEN" ] && exit 0
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
           ACTIONS_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           SUSFS_LABEL="No"
           [ "${{ inputs.with_susfs }}" = "true" ] && SUSFS_LABEL="Yes"
+          
+          # Gunakan secret jika ada, jika tidak default ke username publik channel
+          TARGET_ERROR_CHAT_ID="${TG_ERROR_CHAT_ID:-@naierrordump}"
 
           ERROR_LOG="/tmp/epitaph_error.log"
           : > "$ERROR_LOG"
@@ -1281,18 +1288,18 @@ jobs:
           HEADER=$(printf '<b>❌ Epitaph Kernel — Build FAILED</b>\n\n<b>Kernel:</b> %s\n<b>Version:</b> v%s\n<b>Developer:</b> ${{ inputs.author_name }}\n<b>Root:</b> ${{ inputs.ksu_method }}\n<b>SUSFS:</b> %s\n<b>Toolchain:</b> ${{ inputs.clang_toolchain }}\n<b>Triggered by:</b> ${{ github.actor }}\n\n<a href="%s">🔍 Full log</a>' \
             "${{ env.ZIP_NAME }}" "${{ github.run_number }}" "$SUSFS_LABEL" "$ACTIONS_URL")
           curl -s -X POST "${TG_API}/sendMessage" \
-            --form-string "chat_id=${TG_ERROR_CHAT_ID}" --form-string "text=${HEADER}" --form-string "parse_mode=HTML"
+            --form-string "chat_id=${TARGET_ERROR_CHAT_ID}" --form-string "text=${HEADER}" --form-string "parse_mode=HTML"
 
           LOG_FILENAME="${{ env.ZIP_NAME }}-Error.log"
           cp "$ERROR_LOG" "/tmp/${LOG_FILENAME}"
           HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TG_API}/sendDocument" \
-            --form-string "chat_id=${TG_ERROR_CHAT_ID}" \
+            --form-string "chat_id=${TARGET_ERROR_CHAT_ID}" \
             -F "document=@/tmp/${LOG_FILENAME};filename=${LOG_FILENAME}" \
             --form-string "caption=📋 Error log — ${{ env.ZIP_NAME }}" --form-string "parse_mode=HTML" || echo "000")
           if [ "$HTTP" != "200" ]; then
             SNIPPET=$(tail -30 "$ERROR_LOG" | head -c 3500)
             curl -s -X POST "${TG_API}/sendMessage" \
-              --form-string "chat_id=${TG_ERROR_CHAT_ID}" \
+              --form-string "chat_id=${TARGET_ERROR_CHAT_ID}" \
               --form-string "text=$(printf '<b>📋 Error snippet:</b>\n<pre>%s</pre>' "$SNIPPET")" \
               --form-string "parse_mode=HTML"
           fi
