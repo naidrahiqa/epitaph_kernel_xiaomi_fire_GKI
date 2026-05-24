@@ -268,8 +268,15 @@ set_kmi() {
 setup_ksu() {
   cd kernel
 
-  echo "Cloning KernelSU-Next (pershoot fork next-susfs branch)..."
-  git clone https://github.com/pershoot/KernelSU-Next -b next-susfs KernelSU-Next
+  if [ "$WITH_SUSFS" = "true" ]; then
+    # Kloning fork pershoot branch next-susfs yang sudah terintegrasi SUSFS secara pre-patched
+    echo "Cloning KernelSU-Next (pershoot fork next-susfs branch)..."
+    git clone https://github.com/pershoot/KernelSU-Next -b next-susfs KernelSU-Next
+  else
+    # Kloning upstream resmi KernelSU-Next branch next untuk build murni tanpa SUSFS
+    echo "Cloning KernelSU-Next (official upstream next branch)..."
+    git clone https://github.com/KernelSU-Next/KernelSU-Next -b next KernelSU-Next
+  fi
 
   if [ ! -d "KernelSU-Next/kernel" ]; then
     echo "❌ ERROR: KernelSU-Next/kernel/ directory not found!"

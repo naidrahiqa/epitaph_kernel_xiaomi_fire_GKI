@@ -112,7 +112,9 @@ jobs:
       - name: Prepare Kernel Build (Common)
         run: |
           chmod +x "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh"
-          "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh" \
+          mkdir -p kernel
+          # Tangkap log persiapan build ke file sementara agar bisa didiagnosis jika terjadi kegagalan
+          if ! "$GITHUB_WORKSPACE/scripts/prepare_kernel_build.sh" \
             "core" \
             "${{ env.ANDROID_VERSION }}" \
             "${{ env.KERNEL_VERSION }}" \
@@ -120,7 +122,13 @@ jobs:
             "$GITHUB_ENV" \
             "${{ inputs.clang_toolchain }}" \
             "${{ inputs.ksu_method }}" \
-            "${{ inputs.with_susfs }}"
+            "${{ inputs.with_susfs }}" > /tmp/prep_build.log 2>&1; then
+              cat /tmp/prep_build.log
+              echo "❌ ERROR: prepare_kernel_build.sh failed!" > kernel/build.log
+              tail -n 100 /tmp/prep_build.log >> kernel/build.log
+              exit 1
+          fi
+          cat /tmp/prep_build.log
 
       # FIX 1: Re-enable SUSFS step — was hardcoded `if: false` for testing.
       # Sekarang mengikuti input `with_susfs` dari matrix dispatcher.
@@ -133,9 +141,14 @@ jobs:
           cd kernel
 
           echo "📥 Cloning SUSFS4KSU..."
-          git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git \
-            -b gki-${ANDROID_VERSION}-${KERNEL_VERSION} \
-            || { echo "❌ ERROR: SUSFS branch gki-${ANDROID_VERSION}-${KERNEL_VERSION} not found!"; exit 1; }
+          if ! git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git \
+            -b gki-${ANDROID_VERSION}-${KERNEL_VERSION} > /tmp/susfs_clone.log 2>&1; then
+              cat /tmp/susfs_clone.log
+              echo "❌ ERROR: SUSFS branch gki-${ANDROID_VERSION}-${KERNEL_VERSION} tidak ditemukan!" > build.log
+              cat /tmp/susfs_clone.log >> build.log
+              exit 1
+          fi
+          cat /tmp/susfs_clone.log
 
           cd common
 
@@ -145,18 +158,23 @@ jobs:
           echo "🔧 Applying SUSFS kernel patch..."
           SUSFS_PATCH_APPLIED=false
 
+          echo "📁 Listing available SUSFS patches in susfs4ksu/kernel_patches/:"
+          ls -la ../susfs4ksu/kernel_patches/ || echo "  (none)"
+
           # Try exact version match first
           for patch in \
             "../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-${ANDROID_VERSION}-${KERNEL_VERSION}.patch" \
             "../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch" \
             "../susfs4ksu/kernel_patches/AnyKernel3/patches/${KERNEL_VERSION}/50_add_susfs_in_kernel.patch"; do
             if [ -f "$patch" ]; then
-              echo "  → Trying: $(basename $patch)"
-              if git apply --check "$patch" 2>/dev/null; then
+              echo "  → Trying exact patch: $(basename $patch)"
+              echo "--- git apply --check ---"
+              if git apply --check "$patch"; then
                 git apply "$patch" && echo "  ✅ git apply success" && SUSFS_PATCH_APPLIED=true && break
               else
                 echo "  ⚠️ git apply --check failed, trying patch --forward --fuzz=3..."
-                if patch -p1 --forward --fuzz=3 --dry-run < "$patch" >/dev/null 2>&1; then
+                echo "--- patch --dry-run ---"
+                if patch -p1 --forward --fuzz=3 --dry-run < "$patch"; then
                   patch -p1 --forward --fuzz=3 < "$patch" && echo "  ✅ patch success" && SUSFS_PATCH_APPLIED=true && break
                 else
                   echo "  ❌ Patch does not apply cleanly to this kernel version"
@@ -172,12 +190,14 @@ jobs:
               ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-*.patch \
               ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-*.patch; do
               if [ -f "$patch" ]; then
-                echo "  → Trying: $(basename $patch)"
-                if git apply --check "$patch" 2>/dev/null; then
+                echo "  → Trying fallback patch: $(basename $patch)"
+                echo "--- git apply --check ---"
+                if git apply --check "$patch"; then
                   git apply "$patch" && echo "  ✅ git apply success" && SUSFS_PATCH_APPLIED=true && break
                 else
                   echo "  ⚠️ git apply --check failed, trying patch..."
-                  if patch -p1 --forward --fuzz=3 --dry-run < "$patch" >/dev/null 2>&1; then
+                  echo "--- patch --dry-run ---"
+                  if patch -p1 --forward --fuzz=3 --dry-run < "$patch"; then
                     patch -p1 --forward --fuzz=3 < "$patch" && echo "  ✅ patch success" && SUSFS_PATCH_APPLIED=true && break
                   else
                     echo "  ❌ Patch does not apply cleanly"
@@ -188,13 +208,15 @@ jobs:
           fi
 
           if [ "$SUSFS_PATCH_APPLIED" = "false" ]; then
-            echo "❌ ERROR: No SUSFS kernel patch could be applied!"
-            echo "   This means SUSFS is incompatible with this kernel version."
-            echo "   Available patches:"
-            ls -1 ../susfs4ksu/kernel_patches/*.patch 2>/dev/null || echo "  (none)"
-            echo ""
-            echo "   Kernel version: $(make kernelversion 2>/dev/null || echo 'unknown')"
-            echo "   Branch: $(git branch --show-current 2>/dev/null || echo 'unknown')"
+            {
+              echo "❌ ERROR: No SUSFS kernel patch could be applied!"
+              echo "   This means SUSFS is incompatible with this kernel version."
+              echo "   Available patches:"
+              ls -1 ../susfs4ksu/kernel_patches/*.patch 2>/dev/null || echo "  (none)"
+              echo ""
+              echo "   Kernel version: $(make kernelversion 2>/dev/null || echo 'unknown')"
+              echo "   Branch: $(git branch --show-current 2>/dev/null || echo 'unknown')"
+            } | tee -a ../build.log
             exit 1
           fi
           echo "✅ SUSFS kernel patch applied successfully"
@@ -204,13 +226,13 @@ jobs:
           if [ -d "../susfs4ksu/kernel_patches/fs" ]; then
             cp -rv ../susfs4ksu/kernel_patches/fs/* fs/
           else
-            echo "❌ ERROR: SUSFS fs/ directory not found!"
+            echo "❌ ERROR: SUSFS fs/ directory not found!" | tee -a ../build.log
             exit 1
           fi
           if [ -d "../susfs4ksu/kernel_patches/include/linux" ]; then
             cp -rv ../susfs4ksu/kernel_patches/include/linux/* include/linux/
           else
-            echo "❌ ERROR: SUSFS include/linux/ directory not found!"
+            echo "❌ ERROR: SUSFS include/linux/ directory not found!" | tee -a ../build.log
             exit 1
           fi
 
@@ -299,15 +321,17 @@ jobs:
           echo "✅ SUSFS_INTEGRATED status: $SUSFS_INTEGRATED"
 
           if [ "$SUSFS_INTEGRATED" = "true" ]; then
-            [ ! -f "fs/susfs.c" ] && echo "❌ ERROR: fs/susfs.c not found!" && exit 1
-            [ ! -f "include/linux/susfs.h" ] && echo "❌ ERROR: susfs.h not found!" && exit 1
+            [ ! -f "fs/susfs.c" ] && echo "❌ ERROR: fs/susfs.c not found!" | tee -a ../build.log && exit 1
+            [ ! -f "include/linux/susfs.h" ] && echo "❌ ERROR: susfs.h not found!" | tee -a ../build.log && exit 1
 
             CRITICAL_REJ=$(find fs/ include/ -name "*.rej" -type f 2>/dev/null || true)
             if [ -n "$CRITICAL_REJ" ]; then
-              echo "❌ ERROR: Critical SUSFS patch rejected in fs/ or include/:"
-              for rej in $CRITICAL_REJ; do
-                echo "=== $rej ===" && cat "$rej" && echo "==="
-              done
+              {
+                echo "❌ ERROR: Critical SUSFS patch rejected in fs/ or include/:"
+                for rej in $CRITICAL_REJ; do
+                  echo "=== $rej ===" && cat "$rej" && echo "==="
+                done
+              } | tee -a ../build.log
               exit 1
             fi
             NON_CRIT_REJ=$(find . -name "*.rej" -type f 2>/dev/null || true)
@@ -319,7 +343,8 @@ jobs:
 
             # CRITICAL: Commit all SUSFS and custom changes so Bazel Kleaf sandbox can see them
             cd "$GITHUB_WORKSPACE/kernel/common"
-            git add -u 2>/dev/null || true
+            # Pakai git add -A agar melacak berkas baru (untracked files) seperti fs/susfs.c
+            git add -A 2>/dev/null || true
             git -c user.email="ci@epitaph" -c user.name="Epitaph CI" \
               commit -m "ci: integrate SUSFS $(cat include/linux/susfs.h | grep SUSFS_VERSION | head -1 | awk '{print $3}' || echo 'unknown')" \
               --allow-empty 2>/dev/null || true
