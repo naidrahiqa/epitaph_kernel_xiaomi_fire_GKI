@@ -24,6 +24,7 @@ Generic Kernel Image (GKI) memiliki subsistem penyimpanan log khusus bernama `ps
    ```cmd
    adb shell "su -c cat /sys/fs/pstore/console-ramoops-0" > last_kmsg.txt
    ```
+   adb shell "su -c cat /sys/fs/pstore/mesg-ramoops-0" > last_kmsg.txt
    *(Catatan: Jika file tersebut tidak ditemukan, ganti dengan `dmesg-ramoops-0`)*
 
    **Metode B: Salin ke Folder Netral Dulu (Paling Aman)**

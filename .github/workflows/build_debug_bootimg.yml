@@ -108,20 +108,23 @@ jobs:
           add_cfg "CONFIG_CFG80211=m"; add_cfg "CONFIG_NL80211_TESTMODE=y"
           add_cfg "CONFIG_CFG80211_WEXT=y"; add_cfg "CONFIG_MAC80211=m"
 
-          echo "" >> "$DEFCONFIG"; echo "# Netfilter" >> "$DEFCONFIG"
+          echo "" >> "$DEFCONFIG"; echo "# Netfilter (IPv4 + IPv6 Hotspot)" >> "$DEFCONFIG"
           for c in CONFIG_NETFILTER CONFIG_NF_CONNTRACK CONFIG_NF_NAT CONFIG_NF_NAT_MASQUERADE \
-            CONFIG_IP_NF_IPTABLES CONFIG_IP_NF_NAT CONFIG_IP_NF_TARGET_MASQUERADE; do add_cfg "${c}=y"; done
+            CONFIG_IP_NF_IPTABLES CONFIG_IP_NF_NAT CONFIG_IP_NF_TARGET_MASQUERADE \
+            CONFIG_IP6_NF_IPTABLES CONFIG_IP6_NF_NAT CONFIG_IP6_NF_TARGET_MASQUERADE \
+            CONFIG_NETFILTER_XT_NAT CONFIG_NETFILTER_XT_TARGET_MASQUERADE; do add_cfg "${c}=y"; done
 
           sed -i '/CONFIG_LOCALVERSION/d' "$DEFCONFIG"
           echo "" >> "$DEFCONFIG"; echo "# Branding" >> "$DEFCONFIG"
           echo 'CONFIG_LOCALVERSION="-Epitaph-Rescue"' >> "$DEFCONFIG"
           echo "CONFIG_LOCALVERSION_AUTO=n" >> "$DEFCONFIG"
 
+          # PStore (RAMoops) — Kernel-side support only.
+          # CATATAN: CONFIG_PSTORE_RAM_MEM_ADDR/SIZE TIDAK EXIST di GKI 6.6.
+          # Memory region di-pass via kernel cmdline (ramoops.mem_address) saat repack boot.img.
           echo "" >> "$DEFCONFIG"; echo "# PStore / RAMoops (CRITICAL)" >> "$DEFCONFIG"
           add_cfg "CONFIG_PSTORE=y"; add_cfg "CONFIG_PSTORE_CONSOLE=y"
           add_cfg "CONFIG_PSTORE_PMSG=y"; add_cfg "CONFIG_PSTORE_RAM=y"
-          add_cfg "CONFIG_PSTORE_RAM_MEM_ADDR=0x4d010000"; add_cfg "CONFIG_PSTORE_RAM_SIZE=0xe0000"
-          add_cfg "CONFIG_PSTORE_RAM_CONSOLE_SIZE=0x40000"; add_cfg "CONFIG_PSTORE_RAM_PMSG_SIZE=0x80000"
 
           git add arch/arm64/configs/gki_defconfig
 
@@ -218,6 +221,25 @@ jobs:
             exit 1
           fi
           cp "$SELECTED" kernel
+
+          # Inject ramoops kernel cmdline parameters agar PStore aktif
+          # GKI 6.6 tidak mendukung CONFIG_PSTORE_RAM_MEM_ADDR via defconfig,
+          # jadi kita inject via kernel cmdline di boot.img header.
+          RAMOOPS_ARGS="ramoops.mem_address=0x4d010000 ramoops.mem_size=0xe0000 ramoops.console_size=0x40000 ramoops.pmsg_size=0x80000 ramoops.record_size=0x10000"
+          if [ -f header ]; then
+            # Cek apakah ramoops sudah ada di cmdline
+            if ! grep -q "ramoops.mem_address" header; then
+              # Append ramoops args ke cmdline yang ada di header
+              sed -i "s|cmdline=\(.*\)|cmdline=\1 ${RAMOOPS_ARGS}|" header 2>/dev/null || true
+              # Jika sed tidak berhasil (format header berbeda), coba langsung
+              if ! grep -q "ramoops.mem_address" header; then
+                echo "cmdline=${RAMOOPS_ARGS}" >> header
+              fi
+              echo "✅ Ramoops cmdline injected into boot.img header"
+            fi
+            cat header | grep cmdline || true
+          fi
+
           ../magiskboot repack boot.img new_boot.img
           cp new_boot.img "$GITHUB_WORKSPACE/dist/${RESCUE_NAME}-boot.img"
           echo "✅ Rescue boot.img created: ${RESCUE_NAME}-boot.img ($(du -h new_boot.img | cut -f1))"

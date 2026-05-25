@@ -471,7 +471,7 @@ jobs:
           add_cfg "CONFIG_MAC80211=m"
 
           echo "" >> "$DEFCONFIG"
-          echo "# Netfilter for Hotspot/Tethering" >> "$DEFCONFIG"
+          echo "# Netfilter for Hotspot/Tethering (IPv4 + IPv6)" >> "$DEFCONFIG"
           add_cfg "CONFIG_NETFILTER=y"
           add_cfg "CONFIG_NF_CONNTRACK=y"
           add_cfg "CONFIG_NF_NAT=y"
@@ -479,6 +479,11 @@ jobs:
           add_cfg "CONFIG_IP_NF_IPTABLES=y"
           add_cfg "CONFIG_IP_NF_NAT=y"
           add_cfg "CONFIG_IP_NF_TARGET_MASQUERADE=y"
+          add_cfg "CONFIG_IP6_NF_IPTABLES=y"
+          add_cfg "CONFIG_IP6_NF_NAT=y"
+          add_cfg "CONFIG_IP6_NF_TARGET_MASQUERADE=y"
+          add_cfg "CONFIG_NETFILTER_XT_NAT=y"
+          add_cfg "CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y"
 
           # Branding — Custom name with build number
           BUILD_VER="${{ github.run_number }}"
@@ -488,17 +493,15 @@ jobs:
           echo "CONFIG_LOCALVERSION=\"-Epitaph-v${BUILD_VER}\"" >> $DEFCONFIG
           echo "CONFIG_LOCALVERSION_AUTO=n" >> $DEFCONFIG
 
-          # PStore (RAMoops) — KEEP
+          # PStore (RAMoops) — Kernel-side support only.
+          # CATATAN: CONFIG_PSTORE_RAM_MEM_ADDR dan CONFIG_PSTORE_RAM_SIZE TIDAK EXIST di GKI 6.6.
+          # PStore memory region harus di-reserve via Device Tree atau kernel cmdline (ramoops.mem_address).
           echo "" >> "$DEFCONFIG"
           echo "# PStore / RAMoops Debugging" >> "$DEFCONFIG"
           add_cfg "CONFIG_PSTORE=y"
           add_cfg "CONFIG_PSTORE_CONSOLE=y"
           add_cfg "CONFIG_PSTORE_PMSG=y"
           add_cfg "CONFIG_PSTORE_RAM=y"
-          add_cfg "CONFIG_PSTORE_RAM_MEM_ADDR=0x4d010000"
-          add_cfg "CONFIG_PSTORE_RAM_SIZE=0xe0000"
-          add_cfg "CONFIG_PSTORE_RAM_CONSOLE_SIZE=0x40000"
-          add_cfg "CONFIG_PSTORE_RAM_PMSG_SIZE=0x80000"
 
           git add arch/arm64/configs/gki_defconfig
           echo "✅ Defconfig finalized and added to git"
