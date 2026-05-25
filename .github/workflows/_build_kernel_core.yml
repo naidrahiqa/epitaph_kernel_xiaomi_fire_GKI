@@ -268,16 +268,46 @@ jobs:
             fi
           fi
 
-          # LANGKAH 4: Integrasikan KernelSU-Next untuk SUSFS menggunakan pershoot fork yang sudah terintegrasi
+          # LANGKAH 4: Apply SUSFS hooks ke KernelSU-Next source (upstream dev branch)
+          # CATATAN: pershoot/KernelSU-Next branch next-susfs TIDAK lagi digunakan karena
+          # API-nya outdated (belum update ke SUSFS v2.1.0). Sekarang kita pakai upstream
+          # KernelSU-Next dev + apply 10_enable_susfs_for_ksu.patch dari simonpunk.
           KSU_KERNEL="drivers/kernelsu"
           if [ -d "$KSU_KERNEL" ]; then
-            # pershoot/next-susfs already has KSU SUSFS hooks — skip KSU patch
-            echo "ℹ️ Using pershoot/next-susfs — KSU SUSFS hooks pre-integrated, skipping 10_enable_susfs_for_ksu.patch"
+            echo "🔧 Applying SUSFS KSU patch to upstream KernelSU-Next..."
+
+            KSU_PATCH_APPLIED=false
+            for ksu_patch in \
+              "../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" \
+              "../susfs4ksu/kernel_patches/10_enable_susfs_for_ksu.patch" \
+              "../susfs4ksu/kernel_patches/KernelSU-Next/10_enable_susfs_for_ksu.patch"; do
+              if [ -f "$ksu_patch" ]; then
+                echo "  → Trying KSU patch: $(basename $ksu_patch) from $(dirname $ksu_patch)"
+                # Patch harus di-apply dari root kernel karena path-nya relatif ke drivers/kernelsu/
+                if git apply --check "$ksu_patch" 2>/dev/null; then
+                  git apply "$ksu_patch" && echo "  ✅ KSU SUSFS patch applied via git apply" && KSU_PATCH_APPLIED=true && break
+                else
+                  echo "  ⚠️ git apply failed, trying patch -p1 --fuzz=3..."
+                  if patch -p1 --forward --fuzz=3 --dry-run < "$ksu_patch" 2>/dev/null; then
+                    patch -p1 --forward --fuzz=3 < "$ksu_patch" && echo "  ✅ KSU SUSFS patch applied via patch" && KSU_PATCH_APPLIED=true && break
+                  else
+                    echo "  ❌ KSU patch does not apply cleanly"
+                  fi
+                fi
+              fi
+            done
+
+            if [ "$KSU_PATCH_APPLIED" = "false" ]; then
+              echo "⚠️ WARNING: 10_enable_susfs_for_ksu.patch not found or failed to apply!"
+              echo "   Available patches in susfs4ksu/kernel_patches/:"
+              find ../susfs4ksu/kernel_patches/ -name "*.patch" -type f 2>/dev/null | head -20
+              echo "   Continuing build — SUSFS may not function correctly..."
+            fi
 
             # Pastikan Git melacak semua perubahan di drivers/kernelsu agar terdeteksi Bazel Kleaf sandbox
             git add -f drivers/kernelsu/ 2>/dev/null || true
 
-            # Tambahkan menu Kconfig jika belum ada
+            # Tambahkan menu Kconfig jika belum ada (dari patch atau manual)
             if ! grep -q "CONFIG_KSU_SUSFS" "$KSU_KERNEL/Kconfig" 2>/dev/null; then
               printf '%s\n' \
                 'menu "KernelSU - SUSFS"' \

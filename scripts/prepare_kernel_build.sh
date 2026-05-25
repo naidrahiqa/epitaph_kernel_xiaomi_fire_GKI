@@ -271,15 +271,13 @@ set_kmi() {
 setup_ksu() {
   cd kernel
 
-  if [ "$WITH_SUSFS" = "true" ]; then
-    # Kloning fork pershoot branch next-susfs yang sudah terintegrasi SUSFS secara pre-patched
-    echo "Cloning KernelSU-Next (pershoot fork next-susfs branch)..."
-    git clone https://github.com/pershoot/KernelSU-Next -b next-susfs KernelSU-Next
-  else
-    # Kloning upstream resmi KernelSU-Next branch dev (branch default utama repo ini) untuk build murni tanpa SUSFS
-    echo "Cloning KernelSU-Next (official upstream dev branch)..."
-    git clone https://github.com/KernelSU-Next/KernelSU-Next -b dev KernelSU-Next
-  fi
+  # Selalu kloning upstream resmi KernelSU-Next branch dev.
+  # Untuk SUSFS builds, patch 10_enable_susfs_for_ksu.patch dan 50_add_susfs_in_kernel.patch
+  # akan di-apply di step "Setup SUSFS" pada _build_kernel_core.yml.
+  # CATATAN: pershoot/KernelSU-Next branch next-susfs TIDAK lagi digunakan karena
+  # API SUSFS-nya outdated (belum update ke v2.1.0) dan menyebabkan compile error.
+  echo "Cloning KernelSU-Next (official upstream dev branch)..."
+  git clone https://github.com/KernelSU-Next/KernelSU-Next -b dev KernelSU-Next
 
   if [ ! -d "KernelSU-Next/kernel" ]; then
     echo "❌ ERROR: KernelSU-Next/kernel/ directory not found!"
