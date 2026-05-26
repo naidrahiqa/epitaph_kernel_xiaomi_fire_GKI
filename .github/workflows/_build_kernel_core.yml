@@ -340,11 +340,12 @@ jobs:
           fi
 
           # Don't check Kconfig we wrote ourselves — check actual patched source
+          # Menggunakan grep rekursif case-insensitive agar andal di semua versi KernelSU-Next
           SUSFS_INTEGRATED=false
           if [ "$SUSFS_PATCH_APPLIED" = "true" ] \
             && [ -f "fs/susfs.c" ] \
             && [ -f "include/linux/susfs.h" ] \
-            && (grep -q "susfs" drivers/kernelsu/core_hook.c 2>/dev/null || grep -q "susfs" drivers/kernelsu/hooks.c 2>/dev/null); then
+            && grep -rqi "susfs" drivers/kernelsu/ 2>/dev/null; then
             SUSFS_INTEGRATED=true
           fi
 
@@ -535,6 +536,13 @@ jobs:
 
           git add arch/arm64/configs/gki_defconfig
           echo "✅ Defconfig finalized and added to git"
+
+          # CRITICAL: Lakukan commit untuk seluruh perubahan di common/ (KSU, SUSFS, patches, defconfig)
+          # agar terdeteksi sepenuhnya oleh Bazel Kleaf sandbox.
+          git -c user.email="ci@epitaph" -c user.name="Epitaph CI" \
+            commit -m "ci: finalize kernel configuration and defconfig" \
+            --allow-empty 2>/dev/null || true
+          echo "✅ Staged changes committed to git HEAD"
 
       - name: Build Kernel (Bazel)
         if: inputs.clang_toolchain == 'bazel-default' || inputs.clang_toolchain == ''

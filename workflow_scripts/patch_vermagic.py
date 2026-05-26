@@ -8,9 +8,11 @@ def main():
     files_to_check = [
         "kernel/module/internal.h",
         "kernel/module/main.c",
+        "kernel/module/version.c",
         "kernel/module.c",
         "common/kernel/module/internal.h",
         "common/kernel/module/main.c",
+        "common/kernel/module/version.c",
         "common/kernel/module.c"
     ]
     
@@ -22,9 +24,9 @@ def main():
             with open(filepath, "r") as f:
                 content = f.read()
                 
-            # Regex untuk mencari deklarasi 'static inline int same_magic' beserta isi kurung kurawalnya
-            # yang terkadang mencakup multiline
-            match = re.search(r"static inline int same_magic\s*\([^)]*\)\s*\{", content)
+            # Regex untuk mencari deklarasi same_magic (static inline atau biasa, return int atau bool)
+            # beserta isi kurung kurawalnya yang terkadang mencakup multiline
+            match = re.search(r"(?:static\s+inline\s+)?(?:int|bool)\s+same_magic\s*\([^)]*\)\s*\{", content)
             if match:
                 print(f"🎯 Menemukan fungsi same_magic pada {filepath}!")
                 
