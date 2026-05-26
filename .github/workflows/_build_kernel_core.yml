@@ -273,7 +273,7 @@ jobs:
           # API-nya outdated (belum update ke SUSFS v2.1.0). Sekarang kita pakai upstream
           # KernelSU-Next dev + apply 10_enable_susfs_for_ksu.patch dari simonpunk.
           KSU_KERNEL="drivers/kernelsu"
-          if [ -d "$KSU_KERNEL" ]; then
+          if [ -d "$KSU_KERNEL" ] && ! grep -q "CONFIG_KSU_SUSFS" "$KSU_KERNEL/Kconfig" 2>/dev/null; then
             echo "🔧 Applying SUSFS KSU patch to upstream KernelSU-Next..."
 
             KSU_PATCH_APPLIED=false
@@ -698,6 +698,7 @@ jobs:
 
       - name: Package AnyKernel3
         run: |
+          set -euo pipefail
           CUSTOM_NAME="${{ inputs.custom_name }}"
           BUILD_VER="${{ github.run_number }}"
           AUTHOR="${{ inputs.author_name }}"
@@ -705,8 +706,27 @@ jobs:
           TOOLCHAIN_SHORT="${{ env.TOOLCHAIN_NAME }}"
           BASE_NAME="${{ env.ZIP_NAME }}"
 
-          # PINNED FORK: Menggunakan fork AnyKernel3 milik Naidrahiqa untuk menghindari perubahan upstream yang tidak kompatibel
-          git clone --depth=1 https://github.com/Naidrahiqa/AnyKernel3.git ak3 && cd ak3
+          # PINNED FORK: Menggunakan fork AnyKernel3 milik Naidrahiqa untuk menghindari perubahan upstream yang tidak kompatibel.
+          # Jika gagal clone (misal karena repositori belum dibuat/masih privat), lakukan fallback otomatis ke osm0sis/AnyKernel3 resmi.
+          echo "📥 Cloning AnyKernel3 template..."
+          CLONED=false
+          if git clone --depth=1 https://github.com/Naidrahiqa/AnyKernel3.git ak3 2>/dev/null; then
+            CLONED=true
+            echo "✅ Successfully cloned Naidrahiqa/AnyKernel3 fork"
+          else
+            echo "⚠️ Failed to clone Naidrahiqa/AnyKernel3, trying fallback to official osm0sis/AnyKernel3..."
+            if git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git ak3; then
+              CLONED=true
+              echo "✅ Successfully cloned official osm0sis/AnyKernel3 as fallback"
+            fi
+          fi
+
+          if [ "$CLONED" != "true" ]; then
+            echo "❌ ERROR: Failed to clone AnyKernel3 template from all sources!"
+            exit 1
+          fi
+
+          cd ak3
 
           # Tentukan format penamaan kernel yang akan muncul pada menu aplikasi Kernel Manager di ponsel
           if [ "${{ inputs.with_susfs }}" == "true" ]; then
