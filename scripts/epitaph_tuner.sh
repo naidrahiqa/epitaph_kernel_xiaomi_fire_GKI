@@ -18,6 +18,24 @@ log_msg() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
+# Helper: write to sysfs/procfs safely and silently without console warnings
+write_value() {
+  local val="$1"
+  local target="$2"
+  if [ -e "$target" ]; then
+    { echo "$val" > "$target"; } 2>/dev/null
+  fi
+}
+
+# Helper: copy file content safely and silently
+copy_value() {
+  local src="$1"
+  local target="$2"
+  if [ -f "$src" ] && [ -e "$target" ]; then
+    { cat "$src" > "$target"; } 2>/dev/null
+  fi
+}
+
 log_msg "=== EPITAPH TUNER STARTED ==="
 
 # Initialize Epitaph Schedutil Performance profile folder and files
@@ -188,8 +206,8 @@ for policy in /sys/devices/system/cpu/cpufreq/policy*; do
   if [ -f "$policy/scaling_governor" ]; then
     gov=$(cat "$policy/scaling_governor")
     if [ "$gov" = "schedutil" ]; then
-      echo "$UP_RATE" > "$policy/schedutil/up_rate_limit_us" 2>/dev/null
-      echo "$DOWN_RATE" > "$policy/schedutil/down_rate_limit_us" 2>/dev/null
+      write_value "$UP_RATE" "$policy/schedutil/up_rate_limit_us"
+      write_value "$DOWN_RATE" "$policy/schedutil/down_rate_limit_us"
       log_msg "Tuned $policy (schedutil): up=$UP_RATE, down=$DOWN_RATE"
     fi
   fi
@@ -199,18 +217,18 @@ done
 # Fixes GPU frequency locks / MTK thermal driver throttle bugs
 log_msg "Section 3: Optimizing GPU settings..."
 if [ -d /sys/kernel/ged/hal ]; then
-  echo 1 > /sys/kernel/ged/hal/gpu_boost 2>/dev/null
-  echo 1 > /sys/module/ged/parameters/boost_gpu_enable 2>/dev/null
+  write_value 1 /sys/kernel/ged/hal/gpu_boost
+  write_value 1 /sys/module/ged/parameters/boost_gpu_enable
   log_msg "GED GPU boost enabled"
 fi
 for mali_dir in /sys/class/misc/mali0/device /sys/devices/platform/*.mali; do
   if [ -d "$mali_dir" ]; then
-    echo "dynamic" > "$mali_dir/power_policy" 2>/dev/null
+    write_value "dynamic" "$mali_dir/power_policy"
     if [ -f "$mali_dir/dvfs_max_freq" ]; then
       if [ -f "$mali_dir/dvfs_max_freq_khz" ]; then
-        cat "$mali_dir/dvfs_max_freq_khz" > "$mali_dir/dvfs_max_freq" 2>/dev/null
+        copy_value "$mali_dir/dvfs_max_freq_khz" "$mali_dir/dvfs_max_freq"
       elif [ -f "$mali_dir/max_clock" ]; then
-        cat "$mali_dir/max_clock" > "$mali_dir/dvfs_max_freq" 2>/dev/null
+        copy_value "$mali_dir/max_clock" "$mali_dir/dvfs_max_freq"
       fi
     fi
     log_msg "Mali GPU policy set to dynamic & maximum frequency locked for $mali_dir"
@@ -220,12 +238,12 @@ done
 # 4. MEMORY & VIRTUAL MEMORY TUNING
 # Resolves high RAM consumption, prevents OOM & background app kills
 log_msg "Section 4: Tuning Memory & Virtual Memory..."
-echo 180 > /proc/sys/vm/swappiness 2>/dev/null && log_msg "Swappiness set to 180"
-echo 100 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null && log_msg "vfs_cache_pressure set to 100"
-echo 20 > /proc/sys/vm/dirty_ratio 2>/dev/null && log_msg "dirty_ratio set to 20"
-echo 5 > /proc/sys/vm/dirty_background_ratio 2>/dev/null && log_msg "dirty_background_ratio set to 5"
+write_value 180 /proc/sys/vm/swappiness && log_msg "Swappiness set to 180"
+write_value 100 /proc/sys/vm/vfs_cache_pressure && log_msg "vfs_cache_pressure set to 100"
+write_value 20 /proc/sys/vm/dirty_ratio && log_msg "dirty_ratio set to 20"
+write_value 5 /proc/sys/vm/dirty_background_ratio && log_msg "dirty_background_ratio set to 5"
 if [ -e /dev/block/zram0 ]; then
-  echo 2 > /sys/block/zram0/max_comp_streams 2>/dev/null && log_msg "zram0 max_comp_streams set to 2"
+  write_value 2 /sys/block/zram0/max_comp_streams && log_msg "zram0 max_comp_streams set to 2"
 fi
 
 # 5. STORAGE READ-AHEAD OPTIMIZATION
@@ -233,7 +251,7 @@ fi
 log_msg "Section 5: Tuning Storage Read-Ahead..."
 for queue in /sys/block/*/queue; do
   if [ -d "$queue" ]; then
-    echo 512 > "$queue/read_ahead_kb" 2>/dev/null
+    write_value 512 "$queue/read_ahead_kb"
   fi
 done
 log_msg "Read-ahead buffers set to 512KB for storage block queues"
@@ -241,9 +259,9 @@ log_msg "Read-ahead buffers set to 512KB for storage block queues"
 # 6. TCP SYSCTL NETWORK TUNING
 # Optimizes networking performance & latency
 log_msg "Section 6: Applying TCP sysctl optimizations..."
-echo "bbr" > /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null && log_msg "TCP congestion control set to BBR"
-echo "fq" > /proc/sys/net/core/default_qdisc 2>/dev/null && log_msg "Default qdisc set to FQ"
-echo 3 > /proc/sys/net/ipv4/tcp_fastopen 2>/dev/null && log_msg "TCP Fast Open set to 3"
-echo 1 > /proc/sys/net/ipv4/tcp_slow_start_after_idle 2>/dev/null && log_msg "TCP slow start after idle disabled (1)"
+write_value "bbr" /proc/sys/net/ipv4/tcp_congestion_control && log_msg "TCP congestion control set to BBR"
+write_value "fq" /proc/sys/net/core/default_qdisc && log_msg "Default qdisc set to FQ"
+write_value 3 /proc/sys/net/ipv4/tcp_fastopen && log_msg "TCP Fast Open set to 3"
+write_value 1 /proc/sys/net/ipv4/tcp_slow_start_after_idle && log_msg "TCP slow start after idle disabled (1)"
 
 log_msg "=== EPITAPH TUNER COMPLETED SUCCESSFULLY ==="
