@@ -59,7 +59,7 @@ int security_compute_av_user_with_policy(struct selinux_state *state,
 					 struct av_decision *avd,
 					 struct selinux_policy *policy)
 {
-	security_compute_av_user(ssid, tsid, tclass, requested, avd);
+	security_compute_av_user(ssid, tsid, tclass, avd);
 	return 0;
 }
 #endif
