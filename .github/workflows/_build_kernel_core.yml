@@ -353,24 +353,23 @@ jobs:
           echo "✅ SUSFS_INTEGRATED status: $SUSFS_INTEGRATED"
 
           if [ "$SUSFS_INTEGRATED" = "true" ]; then
+            echo "🔧 Checking and fixing SUSFS SELinux symbols..."
+            python3 "$GITHUB_WORKSPACE/workflow_scripts/patch_susfs_selinux.py"
+
             [ ! -f "fs/susfs.c" ] && echo "❌ ERROR: fs/susfs.c not found!" | tee -a ../build.log && exit 1
             [ ! -f "include/linux/susfs.h" ] && echo "❌ ERROR: susfs.h not found!" | tee -a ../build.log && exit 1
 
-            CRITICAL_REJ=$(find fs/ include/ -name "*.rej" -type f 2>/dev/null || true)
+            # Melakukan pemeriksaan ketat terhadap semua file .rej di seluruh kernel tree.
+            # Jika ada patch yang tertolak (rejected), hentikan build langsung agar tidak memicu kegagalan link-time.
+            CRITICAL_REJ=$(find . -name "*.rej" -type f 2>/dev/null || true)
             if [ -n "$CRITICAL_REJ" ]; then
               {
-                echo "❌ ERROR: Critical SUSFS patch rejected in fs/ or include/:"
+                echo "❌ ERROR: SUSFS patch rejected in kernel source tree:"
                 for rej in $CRITICAL_REJ; do
                   echo "=== $rej ===" && cat "$rej" && echo "==="
                 done
               } | tee -a ../build.log
               exit 1
-            fi
-            NON_CRIT_REJ=$(find . -name "*.rej" -type f 2>/dev/null || true)
-            if [ -n "$NON_CRIT_REJ" ]; then
-              echo "⚠️  Non-critical rejected hunks:"
-              for rej in $NON_CRIT_REJ; do echo "   - $rej"; done
-              find . -name "*.rej" -delete 2>/dev/null || true
             fi
 
             # CRITICAL: Commit all SUSFS and custom changes so Bazel Kleaf sandbox can see them
