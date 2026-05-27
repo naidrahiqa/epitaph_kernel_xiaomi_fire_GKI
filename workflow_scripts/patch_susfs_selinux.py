@@ -33,6 +33,7 @@ def main():
     print("🔧 SUSFS functions are missing in services.c. Injecting helper functions...")
     
     # We will append the definitions of the three functions at the end of the file.
+    # Return types and arguments must strictly match the declarations in include/security.h.
     helper_code = """
 /* Injected by Epitaph Build Script to resolve missing SUSFS symbols */
 #if IS_ENABLED(CONFIG_KSU_SUSFS) || IS_ENABLED(CONFIG_SUSFS)
@@ -53,13 +54,13 @@ int security_sid_to_context_with_policy(struct selinux_state *state,
 					    0, policy);
 }
 
-void security_compute_av_user_with_policy(struct selinux_state *state,
-					  u32 ssid, u32 tsid, u16 tclass, u32 requested,
-					  struct av_decision *avd,
-					  struct selinux_policy *policy)
+int security_compute_av_user_with_policy(struct selinux_state *state,
+					 u32 ssid, u32 tsid, u16 tclass, u32 requested,
+					 struct av_decision *avd,
+					 struct selinux_policy *policy)
 {
-	security_compute_av_core(state, ssid, tsid, tclass, requested,
-				 avd, NULL, policy);
+	return security_compute_av_core(state, ssid, tsid, tclass, requested,
+					avd, NULL, policy);
 }
 #endif
 """
