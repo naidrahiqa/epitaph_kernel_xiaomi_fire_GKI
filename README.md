@@ -96,284 +96,79 @@
 ![Chipset](https://img.shields.io/badge/Helio_G88-MT6769-orange?style=for-the-badge)
 ![Kernel](https://img.shields.io/badge/GKI-6.6-0ea5e9?style=for-the-badge&logo=linux&logoColor=white)
 
-<br/>
-
-<!-- STATUS BADGES -->
-![Build](https://img.shields.io/github/actions/workflow/status/naidrahiqa/epitaph_kernel/build_manager_gki.yml?style=flat-square&label=CI%2FCD&logo=githubactions&logoColor=white)
-![Release](https://img.shields.io/github/v/release/naidrahiqa/epitaph_kernel?style=flat-square&label=Latest&color=8b5cf6)
-![Stars](https://img.shields.io/github/stars/naidrahiqa/epitaph_kernel?style=flat-square&color=fbbf24&logo=github)
-![License](https://img.shields.io/badge/License-GPL--2.0-22c55e?style=flat-square)
-![KernelSU](https://img.shields.io/badge/KernelSU--Next-supported-6366f1?style=flat-square)
-![SUSFS](https://img.shields.io/badge/SUSFS-optional-64748b?style=flat-square)
-
 </div>
 
 ---
 
 ## 📖 Overview
 
-**Epitaph** is a custom GKI 6.6 kernel for **Redmi 12 (fire)** running **Android 15 HyperOS 2.0**, built from Google's `common-android15-6.6` branch with a focus on stability, root compatibility, and everyday performance.
-
-Compiled automatically via a multi-toolchain CI/CD pipeline on GitHub Actions, Epitaph ships with kernel-level root integration (KernelSU-Next), optional root-hiding (SUSFS), WiFi/Hotspot fixes, and a post-boot tuner that optimizes the device without touching stock vendor modules.
-
-> **If you're here to flash:** jump straight to [Installation](#-installation).
-> **If you're a developer:** check [Architecture](#-architecture--ci-cd) and [Contributing](#-contributing).
+**Epitaph Kernel** adalah custom kernel GKI 6.6 performa tinggi yang dirancang khusus untuk **Xiaomi Redmi 12 (fire)** yang menjalankan **Android 15 HyperOS 2.0**. Dibuat menggunakan codebase Google `common-android15-6.6` paling mutakhir untuk menghadirkan stabilitas sistem, performa gaming yang responsif, serta integrasi root kernel tingkat lanjut.
 
 ---
 
-## ✨ Features
+## ✨ Core Features
 
-### 🔐 Root & Security
-| Feature | Status | Notes |
-|---|---|---|
-| KernelSU-Next | ✅ Built-in | Kernel-level, no Magisk needed |
-| SUSFS 4 KSU | ✅ Optional build | Hides root from banking apps |
-| Vermagic bypass | ✅ Always on | Stock Xiaomi modules load cleanly |
+### 🔐 Root & Stealth Recovery
+* **KernelSU-Next Built-in**: Akses root tingkat kernel secara native. Aman dan tidak terdeteksi.
+* **SUSFS Support (Optional Build)**: Integrasi driver SUSFS untuk menyembunyikan status root secara maksimal dari aplikasi perbankan.
+* **Smart Vermagic & CRC Bypass**: Secara dinamis membypass proteksi `vermagic` dan pencocokan CRC (`check_version`) pada file system Android. Mengizinkan driver WiFi vendor Xiaomi bawaan ROM ter-load dengan sempurna tanpa crash!
 
-### ⚡ Performance
-| Feature | Status | Notes |
-|---|---|---|
-| CPU Governor | ✅ schedutil | Tuned rate limits via post-boot script |
-| TCP Congestion | ✅ BBR | Better ping, more stable throughput |
-| Packet Scheduler | ✅ FQ | Smoother network under load |
-| I/O Scheduler | ✅ BFQ + Kyber | App launches faster under background I/O |
-| Timer Frequency | ✅ HZ=300 | Balanced responsiveness & battery |
-| WireGuard | ✅ Built-in | Zero overhead VPN at kernel level |
+### 🚀 Performance & Memory
+* **Epitaph Schedutil Governor**: Optimasi runtime governor CPU yang dinonaktifkan pembatasan rate limitnya hingga 100µs untuk UI transisi super mulus. Mendukung 3 profil instan (`performance`, `balanced`, `battery`) yang bisa diganti langsung lewat file `/data/adb/epitaph/mode`.
+* **GPU GED Boost**: Mem-bypass bug throttle termal bawaan driver MediaTek untuk menstabilkan FPS saat gaming berat.
+* **ZRAM ZSTD Multi-Stream**: Kompresi memory latar belakang multi-core yang super cepat dengan efisiensi kompresi 25% lebih hemat RAM dibanding LZ4 standard.
+* **BBR & FQ Network**: Protokol TCP Congestion Control BBR + FQ Queueing untuk latency internet/gaming online yang jauh lebih stabil dan ping minimal.
 
-### 🧠 Memory
-| Feature | Status | Notes |
-|---|---|---|
-| ZRAM ZSTD | ✅ Active | ~25% better compression vs LZ4 |
-| ZRAM multi-stream | ✅ Active | Parallel compression on all cores |
-| MGLRU | ✅ Active | Smarter background app retention |
-| Swappiness tuning | ✅ Post-boot | 180 via Epitaph Tuner |
-
-### 📶 Connectivity
-| Feature | Status | Notes |
-|---|---|---|
-| WiFi modules | ✅ cfg80211 + mac80211 | Modular, AnyKernel3 shipped |
-| Hotspot (IPv4) | ✅ Full NAT | Netfilter Masquerade |
-| Hotspot (IPv6) | ✅ Full NAT | ip6tables Masquerade |
-| WiFi fallback loader | ✅ Post-boot | Auto-insmod if systemless fails |
-
-### 🔧 Debugging & Recovery
-| Feature | Status | Notes |
-|---|---|---|
-| PStore / RAMoops | ✅ Active | Crash logs survive reboot |
-| Rescue boot.img | ✅ Separate build | Always-boots fallback for log pull |
-| Telegram error dump | ✅ Automatic | Build errors auto-sent to error channel |
+### 📶 Connectivity & Native Fixes
+* **Systemless WiFi Fallback Loader**: Injeksi modul framework (`cfg80211`, `mac80211`) dan auto-insmod driver vendor `wlan_drv_gen4m_6768.ko` saat booting untuk mencegah bug hotspot/WiFi mati.
+* **IPv4/IPv6 Hotspot NAT**: Dukungan penuh firewall kernel untuk IP Masquerading hotspot tethering tanpa kendala.
 
 ---
 
-## 📱 Device Compatibility
+## 📥 Quick Installation
 
-| Field | Value |
-|---|---|
-| **Device** | Xiaomi Redmi 12 |
-| **Codename** | `fire` |
-| **Chipset** | MediaTek Helio G88 (MT6769) |
-| **ROM** | HyperOS 2.0 (Android 15) |
-| **Architecture** | ARM64 / GKI 6.6 |
-| **KMI** | android15-8 |
-
-> ⚠️ **This kernel will not work on any other device or ROM version.** AnyKernel3 enforces `supported.versions=15` and `device.name=fire`. Installation will abort automatically on unsupported configurations.
+1. Pastikan Anda berada di **Android 15 (HyperOS 2.0)**.
+2. Unduh build AnyKernel3 ZIP terbaru dari tab [**Releases**](../../releases/latest).
+3. Buka aplikasi [**KernelFlasher**](https://github.com/capntrips/KernelFlasher/releases), pilih file ZIP, dan tekan **Flash**.
+4. Restart perangkat Anda. Selesai!
 
 ---
 
-## 📥 Installation
+## 🚨 Emergency Recovery (Jika Bootloop)
 
-### Prerequisites
-
-- Device on **HyperOS 2.0 (Android 15)** — no other ROM supported
-- [KernelFlasher](https://github.com/capntrips/KernelFlasher/releases) installed with root access
-- A backup of your stock `boot.img` (extract from your HyperOS Fastboot ROM)
-- Fastboot ROM matching your current firmware version (for vbmeta files)
-
-### Step 1 — Disable AVB (One-time only)
-
-Boot into Fastboot mode (`Volume Down + Power`) and run:
+Jika perangkat Anda mengalami bootloop setelah flashing, jangan panik. Masuk ke mode Fastboot (`Volume Bawah + Power`) lalu jalankan perintah berikut lewat PC:
 
 ```bash
-fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img
-fastboot --disable-verity --disable-verification flash vbmeta_system vbmeta_system.img
-fastboot --disable-verity --disable-verification flash vbmeta_vendor vbmeta_vendor.img
-```
-
-> Extract `vbmeta.img` files from the official HyperOS 2.0 Fastboot ROM matching your firmware.
-
-### Step 2 — Choose your build
-
-<div align="center">
-
-| Build Variant | Root | SUSFS | Best for |
-|---|---|---|---|
-| `Epitaph-...-kernelsu-next-false` | KernelSU-Next | ❌ | Daily driver, gaming |
-| `Epitaph-...-kernelsu-next-SUSFS` | KernelSU-Next | ✅ | Banking apps, root hiding |
-
-</div>
-
-### Step 3 — Flash
-
-1. Download the AnyKernel3 ZIP from [**Latest Release →**](../../releases/latest)
-2. Open **KernelFlasher**, select the ZIP, tap **Flash**
-3. Reboot — done
-
-> First boot may take ~10 seconds longer than usual as the post-boot tuner runs.
-
----
-
-## 🚨 Recovery (If Bootloop)
-
-**Don't panic.** Follow this exact sequence:
-
-```bash
-# Step 1: Flash stock boot via Fastboot
+# 1. Kembalikan to stock boot image
 fastboot flash boot boot_stock.img
 fastboot reboot
 ```
 
-Once back on stock ROM with WiFi working:
+Setelah HP menyala kembali secara normal, Anda bisa menarik crash log kernel sebelumnya menggunakan perintah:
 
 ```bash
-# Step 2: Pull crash log from the failed kernel (from PC terminal)
 adb shell "su -c cat /sys/fs/pstore/console-ramoops-0" > last_kmsg.txt
 ```
 
-Then re-flash a stable Epitaph ZIP via KernelFlasher once the issue is identified.
-
-> **Never** flash multiple boot images via Fastboot back-to-back — this wipes the RAMoops crash log.
-
 ---
 
-## 🏗️ Architecture & CI/CD
+## 📂 Key Codebase Files
 
-Epitaph uses a multi-stage GitHub Actions pipeline:
+Bagi developer yang ingin berkontribusi atau melacak bug, berikut berkas-berkas utama di dalam repository ini:
 
-```
-build_manager_gki.yml          ← Dispatcher (matrix: toolchain × SUSFS variant)
-        │
-        ├── _build_kernel_core.yml    ← Core build (per matrix entry)
-        │       ├── prepare_kernel_build.sh   (disk, deps, repo sync, KSU setup)
-        │       ├── Setup SUSFS (optional)
-        │       ├── Configure Kernel (defconfig)
-        │       ├── Build (Bazel or custom toolchain)
-        │       ├── Package AnyKernel3
-        │       └── Release + Telegram notify
-        │
-        └── build_debug_bootimg.yml   ← Rescue kernel (always-boots, PStore enabled)
-```
-
-### Supported Toolchains
-
-| Toolchain | Type | Notes |
-|---|---|---|
-| `bazel-default` | Bazel/Kleaf | **Recommended.** AOSP official build system |
-| `aosp-latest` | make | AOSP Clang from crdroidandroid |
-| `zyc-latest` | make | ZyClang, experimental |
-| `weebx-latest` | make | WeebX Clang, experimental |
-| `neutron-latest` | make | Neutron Clang, experimental |
-
-> ⚠️ Only `bazel-default` is production-tested. Custom toolchains may produce bootloops and are for experimentation only.
-
----
-
-## 🎛️ Epitaph Tuner
-
-A post-boot optimization script ships inside AnyKernel3 and installs to `/data/adb/service.d/epitaph_tuner.sh`. It runs automatically at every boot via KernelSU/Magisk service.d.
-
-**What it does:**
-
-```
-1. WiFi fallback loader    — insmod cfg80211/mac80211 if systemless loading fails
-2. CPU schedutil tuning    — up_rate=500µs, down_rate=10000µs for smooth UI
-3. GPU limiter reset       — bypasses MTK GED thermal throttle bug
-4. VM tuning               — swappiness=180, dirty_ratio=20, vfs_cache_pressure=100
-5. ZRAM streams            — max_comp_streams=2 for parallel compression
-6. Read-ahead boost        — 512KB for faster app load times
-7. TCP tuning              — BBR congestion, FQ qdisc, tcp_fastopen=3
-```
-
-Check tuner status anytime:
-
-```bash
-adb shell "cat /data/local/tmp/epitaph_tuner.log"
-```
-
----
-
-## 📊 Build Variants Matrix
-
-When triggered with `susfs_variant=both` and `toolchain=all`, the CI produces up to 10 builds in parallel:
-
-<div align="center">
-
-| | Bazel | AOSP | ZyClang | WeebX | Neutron |
-|---|---|---|---|---|---|
-| **No SUSFS** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **+ SUSFS** | ✅ | ✅ | ✅ | ✅ | ✅ |
-
-</div>
-
-Each build produces a standalone AnyKernel3 ZIP named:
-```
-Epitaph-{Toolchain}-kernelsu-next[-SUSFS]-{Date}-AnyKernel3.zip
-```
-
----
-
-## 🛠️ Developer Notes
-
-### Building locally (via GitHub Actions)
-
-1. Fork this repository
-2. Go to **Actions → 🎛️ GKI Control Center**
-3. Click **Run workflow**, choose your variant
-4. Download the artifact from the completed run
-
-### Adding patches
-
-Drop `.patch` files into the `patches/` directory. They are applied automatically during `prepare_kernel_build.sh` via `patch -p1`.
-
-### Key scripts
-
-| Script | Purpose |
+| File / Folder | Deskripsi |
 |---|---|
-| `scripts/prepare_kernel_build.sh` | Disk cleanup, deps, repo sync, KSU integration |
-| `scripts/epitaph_tuner.sh` | Post-boot runtime optimizations |
-| `workflow_scripts/patch_build_system.py` | Registers WiFi modules in Bazel BUILD.bazel |
-| `workflow_scripts/patch_vermagic.py` | Bypasses vermagic mismatch for stock vendor modules |
-| `workflow_scripts/patch_kbuild.py` | Injects static KSU version into Kbuild |
-
----
-
-## 👥 Team
-
-| Contributor | Role |
-|---|---|
-| **Faqih Ardian Syah ([@naidrahiqa](https://github.com/naidrahiqa))** | Lead Maintainer & Kernel Architect |
-| **Antigravity AI** | CI/CD Engineer & Autonomous Co-Developer |
-| **Gemini** (Google) | Architectural Reasoning |
-| **Claude** (Anthropic) | Code Review & Syntax Refinement |
-| **DeepSeek** | Performance Optimization |
-| **Qwen** (Alibaba) | Bazel Build System |
-
----
-
-## 📄 License
-
-This project is licensed under **GPL-2.0** in accordance with the Linux kernel license.
-Vendor blobs and proprietary modules remain property of their respective owners.
+| [`scripts/prepare_kernel_build.sh`](scripts/prepare_kernel_build.sh) | Script CI/CD untuk setup dependensi, disk, sync, dan integrasi KSU. |
+| [`scripts/epitaph_tuner.sh`](scripts/epitaph_tuner.sh) | Script optimasi runtime (WiFi recovery, schedutil profile, VM swappiness). |
+| [`workflow_scripts/patch_vermagic.py`](workflow_scripts/patch_vermagic.py) | Patcher Python untuk bypass total signature vermagic & CRC modversions. |
+| [`docs/`](docs/) | Dokumentasi komprehensif (`DEBUGGING.md`, `ROADMAP.md`, dll). |
 
 ---
 
 <div align="center">
 
-*Built with precision. Flashed with confidence.*
+*Epitaph Kernel is licensed under GPL-2.0.*
 
-**[⬇️ Download Latest Release](../../releases/latest)** &nbsp;·&nbsp; **[🐛 Report Issue](../../issues/new)** &nbsp;·&nbsp; **[📋 Changelog](../../releases)**
-
-<br/>
-
-![Footer](https://img.shields.io/badge/Epitaph_Kernel-Redmi_12-6366f1?style=for-the-badge&logo=linux&logoColor=white)
+**[⬇️ Download Latest Build](../../releases/latest)** &nbsp;·&nbsp; **[🐛 Open Issue](../../issues/new)**
 
 </div>
