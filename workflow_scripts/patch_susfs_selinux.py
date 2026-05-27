@@ -32,8 +32,9 @@ def main():
 
     print("🔧 SUSFS functions are missing in services.c. Injecting helper functions...")
     
-    # We will append the definitions of the three functions at the end of the file.
-    # Return types and arguments must strictly match the declarations in include/security.h.
+    # In GKI 6.6, internal services.c helpers (like security_context_to_sid_core)
+    # do NOT accept selinux_state or selinux_policy. They are static functions operating
+    # directly on the active policy context.
     helper_code = """
 /* Injected by Epitaph Build Script to resolve missing SUSFS symbols */
 #if IS_ENABLED(CONFIG_KSU_SUSFS) || IS_ENABLED(CONFIG_SUSFS)
@@ -42,16 +43,15 @@ int security_context_to_sid_with_policy(struct selinux_state *state,
 					u32 *out_sid, u32 def_sid, gfp_t gfp_flags,
 					struct selinux_policy *policy)
 {
-	return security_context_to_sid_core(state, scontext, scontext_len,
-					    out_sid, def_sid, gfp_flags, 0, policy);
+	return security_context_to_sid_core(scontext, scontext_len,
+					    out_sid, def_sid, gfp_flags, 0);
 }
 
 int security_sid_to_context_with_policy(struct selinux_state *state,
 					u32 sid, char **scontext, u32 *scontext_len,
 					struct selinux_policy *policy)
 {
-	return security_sid_to_context_core(state, sid, scontext, scontext_len,
-					    0, policy);
+	return security_sid_to_context_core(sid, scontext, scontext_len, 0, 0);
 }
 
 int security_compute_av_user_with_policy(struct selinux_state *state,
@@ -59,8 +59,8 @@ int security_compute_av_user_with_policy(struct selinux_state *state,
 					 struct av_decision *avd,
 					 struct selinux_policy *policy)
 {
-	return security_compute_av_core(state, ssid, tsid, tclass, requested,
-					avd, NULL, policy);
+	security_compute_av_user(ssid, tsid, tclass, requested, avd);
+	return 0;
 }
 #endif
 """
