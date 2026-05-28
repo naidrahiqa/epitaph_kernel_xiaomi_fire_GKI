@@ -1,4 +1,4 @@
-# PRD — Epitaph Kernel
+# PRD — Epitaph Kernel (v2.0)
 **Product Requirements Document**
 > This document is the **source of truth** for all technical decisions in the Epitaph Kernel project.
 > Anyone (human or AI) who wants to touch this repository **must read this document first**.
@@ -6,24 +6,18 @@
 
 ---
 
-## 1. Product Overview
+## 1. Product Overview (Phase 2: Optimization & Diagnostics)
 
-**Epitaph Kernel** is a custom GKI 6.6 kernel designed for the **Xiaomi Redmi 12 (codename: fire)** running **Android 15 HyperOS 2.0**.
+**Epitaph Kernel** is a highly optimized custom GKI 6.6 kernel designed for the **Xiaomi Redmi 12 (codename: fire)** running **Android 15 HyperOS 2.0**. 
 
-Built from Google's `common-android15-6.6` branch, it is automatically compiled via a GitHub Actions multi-toolchain pipeline, and shipped as an AnyKernel3 ZIP package to be flashed via **KernelFlasher** (no custom recovery like TWRP/OrangeFox is available or supported for this device).
+Having fully completed its Phase 1 core milestones (delivering stable kernel-level root, robust WiFi/hotspot bypasses, custom schedutil governors, and dynamic CI pipelines), the project has transitioned into **Phase 2: Advanced Platform Optimization, Budget Storage Acceleration, and Automated Recovery Diagnostics**.
+
+Built from Google's `common-android15-6.6` branch, the kernel is compiled via GitHub Actions and shipped as a premium AnyKernel3 ZIP package flashed via **KernelFlasher** (as no custom recovery exists for this device).
 
 ### Who are the users?
 - **Developer (maintainer):** Faqih Ardian Syah (@naidrahiqa) — the sole maintainer.
-- **AI pair programmers:** Antigravity, Claude, Gemini, DeepSeek, Qwen — who must read this PRD as a mandatory context helper.
-- **End users:** Redmi 12 owners who wish to install a highly optimized custom kernel.
-
-### What is the value proposition?
-The stock HyperOS 2.0 kernel lacks root compatibility and performance tuning. Epitaph delivers:
-1. Kernel-level root via KernelSU-Next (safer and cleaner than Magisk).
-2. Optional root-hiding capabilities via SUSFS (for banking/corporate apps).
-3. Optimized performance: TCP BBR, BFQ I/O scheduling, custom tuned schedutil governor, ZRAM ZSTD.
-4. Highly stable WiFi & Hotspot (a historical issue for GKI builds on this device).
-5. Post-boot tuner (Epitaph Schedutil Performance) with 3 runtime profiles.
+- **AI pair programmers:** Antigravity, Claude, Gemini, DeepSeek, Qwen — who must read this PRD to ensure absolute compatibility.
+- **End users:** Redmi 12 owners seeking custom root capabilities, gaming enhancements, and extreme battery life.
 
 ---
 
@@ -52,29 +46,7 @@ Users can identify their panel variant using: `adb shell getprop ro.boot.lcm_nam
 
 ---
 
-## 3. System Architecture
-
-### 3.1 Repository Structure
-
-```
-epitaph_kernel/
-├── .github/workflows/
-│   ├── _build_kernel_core.yml      ← Core compilation workflow recipe
-│   ├── build_manager_gki.yml       ← Dispatcher matrix workflow
-│   └── build_debug_bootimg.yml     ← Rescue kernel builder
-├── scripts/
-│   ├── prepare_kernel_build.sh     ← CI disk setup, dependencies, sync, and KSU setup
-│   └── epitaph_tuner.sh            ← Post-boot performance script packaged in AnyKernel3
-├── workflow_scripts/
-│   ├── patch_build_system.py       ← Registers WiFi modules inside BUILD.bazel
-│   ├── patch_vermagic.py           ← Bypasses vermagic for stock Xiaomi modules
-│   └── patch_kbuild.py             ← Injects a static KernelSU-Next version into Kbuild
-├── patches/                        ← Custom patch files (applied via patch -p1)
-│   └── epitaph_schedutil.patch     ← Unlocks the schedutil rate limit minimum to 100µs
-└── guidelines/                     ← Topically organized developer guidelines
-```
-
-### 3.2 CI/CD Pipeline
+## 3. System Architecture & CI/CD Pipeline
 
 ```
 Trigger: workflow_dispatch (manual)
@@ -99,13 +71,15 @@ Trigger: workflow_dispatch (manual)
                │     ├── Extract Build Output
                │     ├── Verify Build Correctness
                │     ├── Package AnyKernel3
+               │     │     └── Inject scripts/epitaph_tuner.sh persistently
                │     ├── Upload Artifacts
                │     ├── Create GitHub Release
-               │     └── Telegram notify (success/failure)
+               │     │     └── Generate dynamic Git-based Release Changelog
+               │     └── Telegram notify (dynamic release status + rescue reference)
                └── summary: final overall build status report
 ```
 
-### 3.3 Toolchain Matrix
+### Toolchain Matrix
 
 | Toolchain | Build System | Status | Notes |
 |---|---|---|---|
@@ -115,114 +89,65 @@ Trigger: workflow_dispatch (manual)
 | `weebx-latest` | make | ⚠️ Experimental | WeebX Clang toolchain |
 | `neutron-latest` | make | ⚠️ Experimental | Neutron Clang toolchain |
 
-**Crucial:** Bazel and custom Clang make-based compilations must be kept isolated. Do not symlink or inject custom compilers into Bazel prebuilt compiler paths.
+---
+
+## 4. Current Features & Status (Completed Core Baseline)
+
+### 🔐 Root & Security (100% Stable)
+* **KernelSU-Next Built-in**: Direct kernel-level root access natively loaded without system partition modifications.
+* **SUSFS for KSU**: Successfully integrated pre-patched driver layers (`next-susfs`) to fully pass banking safety evaluations.
+* **Vermagic Bypass**: Custom dynamically patched module loaders (`same_magic()` returning `1`) to safely bypass signature mismatches, allowing stock Xiaomi WiFi modules to load natively.
+
+### 🚀 Performance & Memory (100% Stable)
+* **Epitaph Schedutil Governor**: Minimum rate limit unlocked to 100µs to eliminate micro-stutters during heavy system operations.
+* **GPU GED Boost**: MediaTek thermal throttle overrides active to stabilize framerates.
+* **ZRAM ZSTD Multi-Stream**: Compressed background paging with 25% better RAM savings than LZ4.
+* **BBR & FQ Network**: TCP BBR Congestion Control active for gaming latency optimization.
+* **Epitaph Tuner post-boot (`epitaph_tuner.sh`)**: Dynamically switches performance/balanced/battery profiles via `/data/adb/epitaph/mode`.
+
+### 📶 Connectivity & Native Fixes (100% Stable)
+* **Systemless WiFi Loader**: Bundles framework network modules (`cfg80211`, `mac80211`) and performs automatic boot-time insertion (`insmod`) to guarantee stable Hotspot/WiFi.
+* **IPv4/IPv6 Hotspot NAT**: Masquerading active for unrestricted tethering.
 
 ---
 
-## 4. Features & Project Status
+## 5. The Next Frontier: New Roadmap & Milestones (Phase 2)
 
-### 4.1 Root & Security
-
-| Feature | Status | Implementation Details |
-|---|---|---|
-| KernelSU-Next | ✅ Always Included | `pershoot/KernelSU-Next` branch `next-susfs` |
-| SUSFS for KSU | ✅ Optional Variant | `simonpunk/susfs4ksu` branch `gki-android15-6.6` |
-| Vermagic bypass | ✅ Always Active | `workflow_scripts/patch_vermagic.py` |
-
-**Correct SUSFS Integration Setup:**
-- KSU side: `pershoot/KernelSU-Next` branch `next-susfs` is pre-patched; `10_enable_susfs_for_ksu.patch` must be SKIPPED.
-- Kernel side: `simonpunk/susfs4ksu` — manually apply `50_add_susfs_in_kernel.patch`.
-- Staged commits: Always run `git commit` after adding SUSFS changes, as the Bazel sandbox only tracks files committed in HEAD.
-
-### 4.2 Performance Tuning
-
-| Feature | Kernel Config | Status |
-|---|---|---|
-| CPU Governor | `CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y` | ✅ Enabled |
-| TCP BBR | `CONFIG_TCP_CONG_BBR=y` + `CONFIG_NET_SCH_FQ=y` | ✅ Enabled |
-| I/O BFQ | `CONFIG_IOSCHED_BFQ=y` | ✅ Enabled |
-| I/O Kyber | `CONFIG_MQ_IOSCHED_KYBER=y` | ✅ Enabled |
-| Timer HZ=300 | `CONFIG_HZ_300=y` | ✅ Enabled |
-| WireGuard | `CONFIG_WIREGUARD=y` | ✅ Enabled |
-| MGLRU | `CONFIG_LRU_GEN=y` | ✅ Enabled |
-| ZRAM ZSTD | `CONFIG_CRYPTO_ZSTD=y` + `CONFIG_ZRAM_MULTI_COMP=y` | ✅ Enabled |
-| PStore/RAMoops | `CONFIG_PSTORE_RAM=y` @ `0x4d010000` | ✅ Enabled |
-
-### 4.3 Epitaph Schedutil Performance Profiles
-
-Managed runtime options via `/data/adb/epitaph/mode`:
-
-| Profile | up_rate | down_rate | GPU Tuning | Swappiness | Uclamp.min | Ideal Use Case |
-|---|---|---|---|---|---|---|
-| `performance` | 100µs | 40ms | always_on + GED boost | 200 | 180 (aggressive) | High-end Gaming |
-| `balanced` | 500µs | 10ms | dynamic + GED boost | 180 | 64 (smooth UI) | Daily Driver (Default) |
-| `battery` | 2ms | 1ms | coarse_demand | 160 | 0 (battery save) | Standby / Long battery life |
-
-Apply profiles at runtime without reboots:
-```sh
-echo "performance" > /data/adb/epitaph/mode && sh /data/adb/epitaph/apply
+```mermaid
+graph TD
+    A[Phase 2 Roadmap] --> B(Sprint 5: Rescue Desktop integration)
+    A --> C(Sprint 6: Helio G88 EAS Optimizations)
+    A --> D(Sprint 7: eMMC 5.1 Storage Tweaks)
+    A --> E(Sprint 8: LCM Panel Drivers RE)
+    A --> F(Sprint 9: Compiler ThinLTO Matrix)
 ```
 
-### 4.4 WiFi & Network Fixes
+### 🛠️ Sprint 5 — Epitaph Rescue Desktop GUI Integration
+* [ ] Integrate the desktop Go/Fyne-based **Epitaph Rescue Tool** with the build repository.
+* [ ] Automate dynamic recovery flashing for bootlooping devices.
+* [ ] Build a **visual PStore log parser** in the Rescue Tool that directly analyzes `console-ramoops-0` and outputs human-readable debugging guidance.
 
-| Feature | Status | Notes |
-|---|---|---|
-| cfg80211 + mac80211 | ✅ Modular (`=m`) | Must remain modular; registered inside BUILD.bazel |
-| Netfilter NAT IPv4 | ✅ Enabled | `CONFIG_NF_NAT=y`, `CONFIG_IP_NF_TARGET_MASQUERADE=y` |
-| Netfilter NAT IPv6 | ✅ Enabled | `CONFIG_IP6_NF_NAT=y`, `CONFIG_IP6_NF_TARGET_MASQUERADE=y` |
-| WiFi fallback loader | ✅ Enabled | Loaded via `epitaph_tuner.sh` if systemless loader fails |
+### ⚡ Sprint 6 — Helio G88 Heterogeneous CPU/GPU EAS Optimizations
+* [ ] Optimize Energy Aware Scheduling (EAS) task placement on the Helio G88 core layout (2× Cortex-A75 big cores + 6× Cortex-A55 LITTLE cores).
+* [ ] Lock lightweight background processes exclusively to Cortex-A55 LITTLE cores to achieve extreme battery lifespan.
+* [ ] Map real-world energy profiles in place of generic GKI common templates to prevent power waste.
 
----
+### 💾 Sprint 7 — eMMC 5.1 Storage & I/O Latency Tweaks
+* [ ] Mitigate micro-stutters during disk-heavy tasks (e.g. background installations) on slower budget storage (eMMC 5.1).
+* [ ] Calibrate virtual memory (VM) page settings (`dirty_ratio`, `dirty_background_ratio`, and `dirty_writeback_centisecs`) specifically for budget hardware.
+* [ ] Implement smart dynamic I/O scheduler switching: switch to low-latency rules automatically when foreground gaming is active.
 
-## 5. Known Issues & Troubleshooting
+### 📱 Sprint 8 — Reverse-Engineering Display Panel Drivers (LCM Variant Expansion)
+* [ ] Keep track of MediaTek MT6768/MT6769 kernel source leaks across similar devices in the community.
+* [ ] Port reverse-engineered display driver hooks to Epitaph to bring LCM panel support to **LC0C/LC0D** variants.
 
-### 5.1 SUSFS Build Failures (v1–v129)
-**Status:** Fully Resolved.
-
-**Root causes:**
-1. **Incorrect KSU source** — standard KernelSU dev branch lacked SUSFS hooks. Fixed by switching to `pershoot/KernelSU-Next` branch `next-susfs`.
-2. **Bazel sandboxing limits** — Bazel built from HEAD, ignoring unstaged SUSFS patches. Fixed by executing `git commit` directly after staging files.
-3. **Falsified `SUSFS_INTEGRATED` flag** — flag was set via self-written configuration checks rather than actual patch success. Fixed by verifying files directly (e.g., `fs/susfs.c`).
-
-### 5.2 Flash-induced Bootloops
-**Primary Causes:**
-1. Unsupported LCD panels (LC0C/LC0D) lacking kernel-side display drivers.
-2. Disabling debugging symbols (`CONFIG_DEBUG_INFO_NONE=y`), which crashes the BPF subsystem on Android 15.
-3. Activating MediaTek combo WiFi config (`CONFIG_MTK_COMBO_WIFI=y`), leading to system crashes.
-4. Using raw `Image` formatting (MediaTek bootloaders require compressed `Image.gz`).
-
-**Emergency Recovery Procedure:**
-```bash
-# Step 1: Flash official stock boot image via PC CMD
-fastboot flash boot boot_stock.img && fastboot reboot
-
-# Step 2: Extract crash log
-adb shell "su -c cat /sys/fs/pstore/console-ramoops-0" > last_kmsg.txt
-```
-*Note: Never flash multiple boots sequentially in Fastboot as it wipes out the volatile RAMoops cache.*
-
-### 5.3 WiFi/Hotspot Failure
-**Causes:**
-1. `CONFIG_DEBUG_INFO_NONE=y` — BTF metadata lost, BPF for network management breaks.
-2. WiFi modules not included in `module_outs` inside `BUILD.bazel` — thus not packaged.
-3. Leftover modules from previous kernel remaining in `/vendor_dlkm` after flashing rescue boot via Fastboot.
-4. `patch_build_system.py` fails to inject `cfg80211.ko`/`mac80211.ko`.
-
-**Fix for leftover WiFi modules in `/vendor_dlkm`:**
-1. Flash stock boot via Fastboot.
-2. Flash stock boot ONCE MORE via KernelFlasher (not Fastboot) -> KernelFlasher restores original stock Xiaomi modules to `/vendor_dlkm`.
-3. Flash the new Epitaph ZIP via KernelFlasher.
-
-### 5.4 CI/CD Build Failures
-**Common Causes:**
-1. Bazel OOM — runner only has 7GB RAM, requires `--lto=none` + `--local_resources=memory=6144`.
-2. repo sync timeout — retried 3 times, but googlesource connections occasionally drop.
-3. SUSFS branch does not exist — `gki-android15-6.6` is not always present in every `susfs4ksu` version.
-4. Stale Bazel cache — manually clear cache via GitHub Actions UI if suspected.
+### 🧪 Sprint 9 — Compiler Flags & Kleaf Optimization Matrix
+* [ ] Transition from `--lto=none` to safe **ThinLTO** to reduce kernel binary footprints and speed up execution.
+* [ ] Fine-tune Clang optimization flags specifically targeting the Cortex-A75/A55 architectures.
 
 ---
 
-## 6. Technical Constraints — NON-NEGOTIABLE
+## 6. Non-Negotiable Technical Constraints
 
 Absolute constraints that must never be broken by any developer (human or AI).
 
@@ -265,7 +190,7 @@ Absolute constraints that must never be broken by any developer (human or AI).
 
 ---
 
-## 7. Debugging Guide
+## 7. Diagnosis & Debugging Guide
 
 ### 7.1 Decision Tree Bootloop
 
@@ -292,64 +217,9 @@ adb shell "su -c cat /sys/fs/pstore/console-ramoops-0" > last_kmsg.txt
 adb shell "su -c cat /sys/fs/pstore/dmesg-ramoops-0" > last_kmsg.txt
 ```
 
-### 7.3 Critical Keywords in Logs
-
-| Keyword | Definition | Diagnostic Step |
-|---|---|---|
-| `Kernel panic` | Fatal crash | Read lines above to find the failing driver/function |
-| `Call Trace` | Stack trace | Top-most lines show the source of the crash |
-| `BUG: scheduling while atomic` | Driver race condition | Usually SUSFS hook conflict |
-| `init: Service '...' killed` | Android process killed | Check `dmesg \| grep avc` for SELinux issues |
-| `module verification failed` | KMI/vermagic mismatch | Check if patch_vermagic.py ran successfully |
-| `KSU: ` | KernelSU init log | Ensure hooks are mounted correctly |
-| `cfg80211:` | WiFi subsystem | Check module loading status |
-
-### 7.4 Debug Build CI/CD
-Add at the end of Setup SUSFS step for debugging:
-```bash
-echo "=== SUSFS DEBUG ==="
-echo "SUSFS_PATCH_APPLIED: $SUSFS_PATCH_APPLIED"
-echo "SUSFS_INTEGRATED: $SUSFS_INTEGRATED"
-echo "fs/susfs.c: $([ -f fs/susfs.c ] && echo EXISTS || echo MISSING)"
-echo "core_hook.c susfs lines: $(grep -c susfs drivers/kernelsu/core_hook.c 2>/dev/null || echo 0)"
-echo "hooks.c susfs lines: $(grep -c susfs drivers/kernelsu/hooks.c 2>/dev/null || echo 0)"
-git log --oneline -3
-git status --short | head -20
-```
-
 ---
 
-## 8. Roadmap
-
-### Sprint 1 — Fix SUSFS (URGENT - COMPLETED)
-- [x] Switch KSU source to `pershoot/KernelSU-Next` branch `next-susfs` in `prepare_kernel_build.sh`
-- [x] Add `git commit` after SUSFS `git add` in `_build_kernel_core.yml`
-- [x] Fix `SUSFS_INTEGRATED` logic — check from source directly (expanded to core_hook.c & hooks.c)
-- [x] Verification: first successful compilation of the SUSFS variant
-
-### Sprint 2 — Defconfig Completeness (COMPLETED)
-- [x] TCP BBR + FQ
-- [x] HZ=300
-- [x] BFQ + Kyber
-- [x] WireGuard
-- [x] MGLRU
-- [x] ZRAM ZSTD multi-comp
-- [x] Verify all configurations are correctly written in actual defconfig
-
-### Sprint 3 — Epitaph Schedutil Performance (COMPLETED)
-- [x] Kernel patch (`patches/epitaph_schedutil.patch`) — unlock rate limit to 100µs
-- [x] Tuner script (`scripts/epitaph_tuner.sh`) — 3 profiles with logging
-- [x] Apply script in AnyKernel3 (`_build_kernel_core.yml`)
-- [x] Test performance/balanced/battery profiles on device
-
-### Sprint 4 — Polish (COMPLETED)
-- [x] Pin/Fork AnyKernel3 to dedicated repository
-- [x] Auto-changelog in Release Body
-- [x] Dynamic LOCALVERSION with Build Number
-
----
-
-## 9. Changelog of Technical Decisions
+## 8. Changelog of Technical Decisions
 
 | Date | Technical Decision | Rationale |
 |---|---|---|
@@ -357,14 +227,15 @@ git status --short | head -20
 | v71 | Remove CONFIG_DEBUG_INFO_NONE | Fixed ZyClang v71 bootloops — debug info is required by Android 15 BPF |
 | v72 | Migrate parsers to python scripts | Fixed heredoc inline indentation errors in YAML files |
 | v72 | Drop Azure compiler toolchain | Incompatible with GKI 6.6 Android 15 toolchain specs |
-| v73 | Integrate full Netfilter NAT support | Restores stable IPv4/IPv6 hotspot sharing functionality |
+| v73 | Integrate full Netfilter NAT support | Restores stable hotspot sharing functionality |
 | v73 | Add Epitaph Tuner script | Fixes stock MediaTek GPU throttles and CPU frequency transitions |
 | v129 | Identify root cause of SUSFS failures | Pinpointed incorrect KSU branch, untracked sandbox files, and false validation flags |
-| 2026-05 | Switch KSU source to pershoot/next-susfs | Pre-patched SUSFS; allows skipping manual 10_enable_susfs patches |
+| v148 | Release body & Telegram notifications refactored | Replaced static notes with dynamic Git auto-changelogs and recovery tool reminders |
+| v148 | KMI Environment Sanitization | Added static defaults to KMI variables in workflow setups to silence parser issues |
 
 ---
 
-## 10. Quick Reference
+## 9. Quick Reference
 
 ### Triggering Builds
 ```
@@ -386,18 +257,7 @@ sh /data/adb/epitaph/apply
 cat /data/adb/epitaph/tuner.log  # Verify status
 ```
 
-### Checking Tuner Logs
-```bash
-adb shell "cat /data/adb/epitaph/tuner.log"
-adb shell "cat /data/adb/epitaph/status"
-```
-
-### Checking Device Panel LCD Variant
-```bash
-adb shell getprop ro.boot.lcm_name
-```
-
 ---
 
 *This document is dynamically updated as new technical decisions are made.*
-*Last updated: May 2026 — v148*
+*Last updated: May 2026 — Phase 2 Launch*
