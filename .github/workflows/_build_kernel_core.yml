@@ -36,6 +36,7 @@ env:
   ANDROID_VERSION: android15
   KERNEL_VERSION: "6.6"
   KMI_GENERATION: ""
+  GIT_CHANGELOG: ""
   KSU_VERSION: ""
   SUSFS_OK: "false"
   ZIP_NAME: ""
