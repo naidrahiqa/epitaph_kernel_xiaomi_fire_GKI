@@ -133,9 +133,9 @@ graph TD
 * [x] Map real-world energy profiles in place of generic GKI common templates to prevent power waste.
 
 ### 💾 Sprint 7 — eMMC 5.1 Storage & I/O Latency Tweaks
-* [ ] Mitigate micro-stutters during disk-heavy tasks (e.g. background installations) on slower budget storage (eMMC 5.1).
-* [ ] Calibrate virtual memory (VM) page settings (`dirty_ratio`, `dirty_background_ratio`, and `dirty_writeback_centisecs`) specifically for budget hardware.
-* [ ] Implement smart dynamic I/O scheduler switching: switch to low-latency rules automatically when foreground gaming is active.
+* [x] Mitigate micro-stutters during disk-heavy tasks (e.g. background installations) on slower budget storage (eMMC 5.1).
+* [x] Calibrate virtual memory (VM) page settings (`dirty_ratio`, `dirty_background_ratio`, and `dirty_writeback_centisecs`) specifically for budget hardware.
+* [x] Implement smart dynamic I/O scheduler switching: switch to low-latency rules automatically when foreground gaming is active.
 
 ### 📱 Sprint 8 — Reverse-Engineering Display Panel Drivers (LCM Variant Expansion)
 * [ ] Keep track of MediaTek MT6768/MT6769 kernel source leaks across similar devices in the community.
