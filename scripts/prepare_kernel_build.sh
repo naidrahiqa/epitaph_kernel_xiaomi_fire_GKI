@@ -137,7 +137,14 @@ download_toolchain() {
         "https://api.github.com/repos/ZyCromerZ/Clang/releases/latest" \
         | jq -r '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url' \
         | head -n1)
-      [ -z "$ZYASSET_URL" ] && echo "ERROR: Failed to get ZyClang URL" && exit 1
+      if [ -z "$ZYASSET_URL" ]; then
+        {
+          echo "❌ ERROR: Failed to get ZyClang URL!"
+          echo "📋 Details: GitHub API request returned empty asset URL."
+          echo "🔧 Suggested fix: Check network connectivity or API rate limits."
+        } > "$GITHUB_WORKSPACE/kernel/build.log"
+        exit 1
+      fi
       # Tambahkan opsi retry-wait=5 dan max-tries=10 untuk menangani error transient HTTP 502/503 di GitHub Releases
       aria2c -x16 -s16 -k1M --retry-wait=5 --max-tries=10 -o clang.tar.gz "$ZYASSET_URL"
       smart_extract clang.tar.gz clang-zyc
@@ -170,13 +177,21 @@ download_toolchain() {
       echo "TOOLCHAIN_NAME=NeutronClang" >> "$GITHUB_ENV"
       ;;
     *)
-      echo "❌ ERROR: Unknown toolchain: $CLANG_TOOLCHAIN"
+      {
+        echo "❌ ERROR: Unknown toolchain: $CLANG_TOOLCHAIN!"
+        echo "📋 Details: Clang toolchain '$CLANG_TOOLCHAIN' is not supported."
+        echo "🔧 Suggested fix: Select a valid compiler (bazel-default, zyc-latest, aosp-latest, weebx-latest, neutron-latest)."
+      } > "$GITHUB_WORKSPACE/kernel/build.log"
       exit 1
       ;;
   esac
 
   if [ ! -f "$CLANG_PATH/bin/clang" ]; then
-    echo "❌ ERROR: clang binary not found at $CLANG_PATH/bin/clang"
+    {
+      echo "❌ ERROR: clang binary not found!"
+      echo "📋 Details: clang binary is missing at $CLANG_PATH/bin/clang."
+      echo "🔧 Suggested fix: Check if the downloaded toolchain archive is valid."
+    } > "$GITHUB_WORKSPACE/kernel/build.log"
     find "$CLANG_PATH" -name "clang*" | head -n 10 || true
     exit 1
   fi
@@ -205,7 +220,15 @@ sync_kernel() {
     echo "⚠️ Sync failed, retrying in 30s..."
     sleep 30
   done
-  [ "$SYNC_OK" = "false" ] && echo "❌ repo sync gagal setelah 3 percobaan" && exit 1
+
+  if [ "$SYNC_OK" = "false" ]; then
+    {
+      echo "❌ ERROR: repo sync failed!"
+      echo "📋 Details: repo sync failed after 3 attempts due to network or manifest issues."
+      echo "🔧 Suggested fix: Verify Android Common Kernel manifest/branch and try again."
+    } > "$GITHUB_WORKSPACE/kernel/build.log"
+    exit 1
+  fi
 
   cd common
   KERNEL_COMMIT=$(git log --oneline -1)
@@ -258,7 +281,11 @@ set_kmi() {
     && sed -i "s/kmi_generation = \"[0-9]*\"/kmi_generation = \"${DETECTED_KMI}\"/" "$STAMP_FILE" || true
 
   if [ -f "build.config.common" ] && ! grep -q "KMI_GENERATION=${DETECTED_KMI}" build.config.common; then
-    echo "❌ ERROR: KMI_GENERATION not set correctly!"
+    {
+      echo "❌ ERROR: KMI_GENERATION not set correctly!"
+      echo "📋 Details: build.config.common does not match expected KMI_GENERATION: ${DETECTED_KMI}."
+      echo "🔧 Suggested fix: Check build.config files configuration."
+    } > "$GITHUB_WORKSPACE/kernel/build.log"
     exit 1
   fi
   echo "✅ KMI_GENERATION=$DETECTED_KMI applied to all config files"
@@ -282,8 +309,11 @@ setup_ksu() {
   fi
 
   if [ ! -d "KernelSU-Next/kernel" ]; then
-    echo "❌ ERROR: KernelSU-Next/kernel/ directory not found!"
-    ls -la KernelSU-Next/ | head -30
+    {
+      echo "❌ ERROR: KernelSU-Next/kernel/ directory not found!"
+      echo "📋 Details: Clone was successful but directory 'kernel' is missing inside cloned repository."
+      echo "🔧 Suggested fix: Check KernelSU-Next repository structure or selected branch."
+    } > "$GITHUB_WORKSPACE/kernel/build.log"
     exit 1
   fi
 
@@ -300,6 +330,18 @@ setup_ksu() {
   cp -r KernelSU-Next/kernel common/drivers/kernelsu
   cp -r KernelSU-Next/uapi common/drivers/kernelsu/uapi 2>/dev/null || true
 
+  # VERIFY dengan cek symbol pre-patched
+  KSU_PREPATCHED=false
+  if [ "$WITH_SUSFS" = "true" ]; then
+    if grep -rq "ksu_susfs_init\|susfs_set_uname" common/drivers/kernelsu/ 2>/dev/null; then
+      echo "✅ pershoot KernelSU-Next fork is verified pre-patched for SUSFS!"
+      KSU_PREPATCHED=true
+    else
+      echo "⚠️ pershoot fork does not seem pre-patched or symbols are missing!"
+    fi
+  fi
+  echo "KSU_PREPATCHED=$KSU_PREPATCHED" >> "$GITHUB_ENV"
+
   find common/drivers/kernelsu -name "BUILD.bazel" -delete
   find common/drivers/kernelsu -name "BUILD" -delete
   echo "   ✅ Removed local BUILD/BUILD.bazel files from drivers/kernelsu"
@@ -308,8 +350,11 @@ setup_ksu() {
   echo "   ✅ Removed depends on EXT4_FS from drivers/kernelsu/Kconfig"
 
   if [ ! -f "common/drivers/kernelsu/Kconfig" ]; then
-    echo "❌ ERROR: KernelSU driver files not found after copy!"
-    ls -la common/drivers/kernelsu/ || true
+    {
+      echo "❌ ERROR: KernelSU driver files not found after copy!"
+      echo "📋 Details: drivers/kernelsu/Kconfig is missing."
+      echo "🔧 Suggested fix: Verify the source files in KernelSU-Next repo."
+    } > "$GITHUB_WORKSPACE/kernel/build.log"
     exit 1
   fi
 
@@ -336,9 +381,11 @@ setup_ksu() {
   python3 -c "with open('common/drivers/Kconfig', 'r+') as f: c = f.read(); p = c.rfind('endmenu'); f.seek(0); f.write(c[:p] + 'source \"drivers/kernelsu/Kconfig\"\n\n' + c[p:]) if p != -1 else f.write(c)"
   echo "   ✅ Safely injected KSU Kconfig before endmenu in drivers/Kconfig"
 
+  # Commit all changes to the committed git tree so they are visible to Bazel Kleaf sandbox
   cd common
-  git add -f drivers/Makefile drivers/Kconfig
-  git add -f drivers/kernelsu/ 2>/dev/null || true
+  git add -A
+  git -c user.email="ci@epitaph" -c user.name="Epitaph CI" \
+    commit -m "ci: integrate KernelSU-Next" --allow-empty
   cd "$GITHUB_WORKSPACE"
 
   echo "KSU_VERSION=$KSU_VERSION" >> "$GITHUB_ENV"

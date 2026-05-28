@@ -1,0 +1,169 @@
+diff --git a/.github/workflows/_build_kernel_core.yml b/.github/workflows/_build_kernel_core.yml
+index 3b75ce1..c9bc030 100644
+--- a/.github/workflows/_build_kernel_core.yml
++++ b/.github/workflows/_build_kernel_core.yml
+@@ -36,7 +36,9 @@ env:
+   ANDROID_VERSION: android15
+   KERNEL_VERSION: "6.6"
+   KMI_GENERATION: ""
++  GIT_CHANGELOG: ""
+   KSU_VERSION: ""
++  RESCUE_VER: ""
+   SUSFS_OK: "false"
+   ZIP_NAME: ""
+   TOOLCHAIN_NAME: ""
+@@ -247,7 +249,7 @@ jobs:
+           fi
+ 
+           [ -f "fs/Makefile" ] && ! grep -q "susfs.o" "fs/Makefile" \
+-            && echo 'obj-$(CONFIG_KSU_SUSFS) += susfs.o' >> "fs/Makefile"
++            && echo 'obj-$(CONFIG_SUSFS) += susfs.o' >> "fs/Makefile"
+ 
+           git add fs/susfs.c include/linux/susfs.h fs/Makefile 2>/dev/null || true
+ 
+@@ -552,14 +554,14 @@ jobs:
+ 
+           # KONFIGURASI BAZEL & KESTABILAN:
+           # 1. Gunakan flag --local_resources=memory=6144. Flag --local_ram_resources sudah deprecated pada versi Bazel di Kleaf GKI 6.6 ini.
+-          # 2. Setel --lto=none demi keamanan dan mencegah kehabisan memori (OOM) pada mesin runner GitHub Actions yang berkapasitas 7GB.
++          # 2. Setel --lto=thin demi mengaktifkan optimasi Link-Time Optimization (ThinLTO) untuk kompresi dan kecepatan eksekusi tinggi.
+           # 3. Lakukan pengulangan kompilasi sampai 3 kali jika terjadi kegagalan akibat kendala jaringan saat mengunduh dependensi remote.
+           BUILD_OK=false
+           for attempt in 1 2 3; do
+             echo "Bazel build attempt $attempt/3..."
+             if tools/bazel run \
+               --disk_cache=/home/runner/.cache/bazel \
+-              --lto=none \
++              --lto=thin \
+               --local_resources=memory=6144 \
+               --jobs=2 \
+               --noshow_progress \
+@@ -689,18 +691,19 @@ jobs:
+ 
+       - name: Generate Changelog
+         run: |
++          # Generate changelog dari git log antara tag sebelumnya dan tag saat ini
+           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+-          CHANGELOG=""
+           if [ -n "$PREV_TAG" ]; then
+-            CHANGELOG=$(git log --oneline ${PREV_TAG}..HEAD --no-merges 2>/dev/null | head -20)
++            GIT_CHANGELOG=$(git log --oneline --no-merges \
++              ${PREV_TAG}..HEAD 2>/dev/null | head -20 \
++              | sed 's/^/- /' || echo "- No commits found")
+           else
+-            CHANGELOG=$(git log --oneline -20 --no-merges 2>/dev/null || echo "")
++            # Fallback ke 15 commit terakhir dari repository root
++            GIT_CHANGELOG=$(git log --oneline --no-merges -n 15 \
++              | sed 's/^/- /' || echo "- Initial build")
+           fi
+-          if [ -z "$CHANGELOG" ]; then
+-            CHANGELOG="No recent changes recorded."
+-          fi
+-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+-          echo "$CHANGELOG" >> $GITHUB_ENV
++          echo "GIT_CHANGELOG<<EOF" >> $GITHUB_ENV
++          echo "$GIT_CHANGELOG" >> $GITHUB_ENV
+           echo "EOF" >> $GITHUB_ENV
+ 
+       - name: Package AnyKernel3
+@@ -824,8 +827,16 @@ jobs:
+           zip -r9 "$GITHUB_WORKSPACE/dist/${BASE_NAME}-AnyKernel3.zip" . -x ".git*" "*.md" "LICENSE"
+           echo "✅ Package created: ${BASE_NAME}-AnyKernel3.zip"
+ 
+-      - name: Get Build Timestamp
+-        run: echo "BUILD_TIME=$(TZ='Asia/Jakarta' date '+%Y-%m-%d %H:%M WIB')" >> $GITHUB_ENV
++      - name: Initialize Release Metadata
++        run: |
++          echo "BUILD_TIME=$(TZ='Asia/Jakarta' date '+%Y-%m-%d %H:%M WIB')" >> $GITHUB_ENV
++          
++          # Fetch the latest rescue tool version tag from GitHub API
++          RESCUE_TAG=$(curl -s https://api.github.com/repos/naidrahiqa/epitaph_rescue/releases/latest | grep -oP '"tag_name": "\K[^"]+' || echo "")
++          if [ -z "$RESCUE_TAG" ]; then
++            RESCUE_TAG="v0.3.0"  # Fallback default if API call fails
++          fi
++          echo "RESCUE_VER=${RESCUE_TAG}" >> $GITHUB_ENV
+ 
+       - name: Upload Artifacts
+         uses: actions/upload-artifact@v4
+@@ -835,43 +846,47 @@ jobs:
+           if-no-files-found: warn
+           retention-days: 30
+ 
+-      # FIX: Hapus "append_body: false" — bukan key valid di softprops/action-gh-release@v2.
+-      # Gunakan "make_latest: false" untuk kontrol release ordering saja jika diperlukan.
+       - name: Create Release
+         uses: softprops/action-gh-release@v2
+         with:
+           tag_name: "${{ inputs.release_tag }}"
+           name: "Epitaph Kernel ${{ inputs.release_tag }}"
+           body: |
+-            ### 📦 Epitaph Kernel ${{ inputs.release_tag }}
+-            - **Type:** GKI 6.6
+-            - **Root:** KernelSU-Next v${{ env.KSU_VERSION }}
+-            - **Governor:** schedutil (Optimized)
+-            - **KMI:** ${{ env.KMI_GENERATION }}
+-            - **Built:** ${{ env.BUILD_TIME }} (run #${{ github.run_number }})
+-
+-            ### 📝 Changes
+-            ```
+-            ${{ env.CHANGELOG }}
+-            ```
++            ## 👑 Epitaph Kernel ${{ inputs.release_tag }}
++
++            🚀 **Stable GKI 6.6 Kernel for Redmi 12 (fire)**
++            Running **Android 15 HyperOS 2.0** compiled with **${{ inputs.clang_toolchain }}**.
++
++            ### 📊 Build Info
++            - **Kernel Version:** `GKI 6.6`
++            - **Root Method:** `${{ inputs.ksu_method }} v${{ env.KSU_VERSION }}`
++            - **SUSFS Status:** `${{ inputs.with_susfs == 'true' && 'Integrated' || 'None' }}`
++            - **Kernel KMI:** `android15-${{ env.KMI_GENERATION }}`
++            - **Build Timestamp:** `${{ env.BUILD_TIME }}` (run #${{ github.run_number }})
++
++            ---
++
++            ### 📝 Changes (Changelog)
++            ${{ env.GIT_CHANGELOG }}
+ 
+             ---
+ 
+-            ### 🚀 Fitur Unggulan:
+-            * **📶 WiFi & Hotspot 100% Stabil:** Subsystem Netfilter NAT lengkap (IPv4/IPv6) + driver kustom `cfg80211` & `mac80211` terintegrasi secara modular dengan auto-loader fallback.
+-            * **🎛️ Epitaph Tuner Post-Boot:** Optimalisasi scheduler CPU schedutil, bypass limiter termal GPU MediaTek, ZRAM swappiness 180, dan read-ahead storage 512KB untuk performa gaming lancar jaya bebas lag!
+-            * **🐏 Memori Maksimal (Anti-OOM):** ZRAM ZSTD dengan kompresi multi-core paralel + Kernel Samepage Merging (KSM) untuk menghemat RAM hingga 1GB+ pada varian HP 4GB.
+-            * **🔋 Baterai Efisien:** Pengaturan batas waktu transisi frekuensi CPU untuk UI super mulus tanpa mengorbankan daya tahan baterai.
++            ### 🔧 Emergency & Rescue
++            * 🚨 **Bootloop?** Download the portable [Epitaph Rescue Tool ${{ env.RESCUE_VER }}](https://github.com/naidrahiqa/epitaph_rescue/releases/tag/${{ env.RESCUE_VER }}) to automatically restore stock and extract RAMoops logs with a single click.
++            * Flash the official stock `boot.img` via Fastboot to recover:
++              ```bash
++              fastboot flash boot boot_stock.img
++              ```
+ 
+             ---
+ 
+-            > ⚠️ **Wajib flash vbmeta dulu sebelum install kernel ini!**
++            > ⚠️ **Prerequisite:** Make sure to disable verified boot verification via Fastboot:
+             > ```
+             > fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img
+             > fastboot --disable-verity --disable-verification flash vbmeta_system vbmeta_system.img
+             > fastboot --disable-verity --disable-verification flash vbmeta_vendor vbmeta_vendor.img
+             > ```
+-            > Ambil file `.img` dari ROM HyperOS 2 Fastboot yang sesuai versi lo.
++            > Extract the `.img` files from your matching HyperOS 2 Fastboot ROM.
+           files: dist/*.zip
+           draft: false
+           prerelease: false
+@@ -894,9 +909,10 @@ jobs:
+           SUSFS_LABEL="No"
+           [ "${{ inputs.with_susfs }}" = "true" ] && SUSFS_LABEL="Yes"
+           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
+-          CAPTION=$(printf '<b>👑 Epitaph Kernel — Build Done</b>\n\n<b>Kernel:</b> %s\n<b>Version:</b> v%s\n<b>Developer:</b> ${{ inputs.author_name }}\n<b>Type:</b> GKI 6.6\n<b>Root:</b> ${{ inputs.ksu_method }} v%s\n<b>Governor:</b> schedutil\n<b>SUSFS:</b> %s\n<b>KMI:</b> %s\n<b>Toolchain:</b> ${{ inputs.clang_toolchain }}\n  └ <i>%s</i>\n<b>Size:</b> %s\n<b>Built:</b> %s\n\n<a href="%s">📦 GitHub Release</a>' \
+-            "$ZIP_NAME" "${{ github.run_number }}" "${{ env.KSU_VERSION }}" "$SUSFS_LABEL" \
+-            "${{ env.KMI_GENERATION }}" "${{ env.TOOLCHAIN_VER }}" "$ZIP_SIZE" "${{ env.BUILD_TIME }}" "$RELEASE_URL")
++          CAPTION=$(printf '👑 <b>Epitaph Kernel %s — Build Success!</b>\n━━━━━━━━━━━━━━━━━━━━━\n🚀 <b>GKI 6.6 Kernel for Redmi 12 (fire)</b>\nRunning Android 15 HyperOS 2.0\n\n📊 <b>System Metrics:</b>\n• <b>Root Method:</b> %s v%s\n• <b>Kernel KMI:</b> android15-%s\n• <b>SUSFS Status:</b> %s\n• <b>Compiler Info:</b> %s\n• <b>Package Size:</b> %s\n• <b>Timestamp:</b> %s (run #%s)\n\n📝 <b>Changelog:</b>\n%s\n━━━━━━━━━━━━━━━━━━━━━\n📦 <b>GitHub Release & Download:</b>\n%s\n\n🔧 <b>Emergency Rescue & Diagnostics:</b>\n<a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
++            "${{ inputs.release_tag }}" "${{ inputs.ksu_method }}" "${{ env.KSU_VERSION }}" "${{ env.KMI_GENERATION }}" "$SUSFS_LABEL" \
++            "${{ env.TOOLCHAIN_VER }}" "$ZIP_SIZE" "${{ env.BUILD_TIME }}" "${{ github.run_number }}" \
++            "$(echo "${{ env.GIT_CHANGELOG }}" | head -10)" "$RELEASE_URL" "${{ env.RESCUE_VER }}" "${{ env.RESCUE_VER }}")
+           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
+           TG_LIMIT=52428800
+           if [ "$ZIP_BYTES" -le "$TG_LIMIT" ]; then
