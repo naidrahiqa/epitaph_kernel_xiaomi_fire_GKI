@@ -128,9 +128,9 @@ graph TD
 * [x] Build a **visual PStore log parser** in the Rescue Tool that directly analyzes `console-ramoops-0` and outputs human-readable debugging guidance.
 
 ### ⚡ Sprint 6 — Helio G88 Heterogeneous CPU/GPU EAS Optimizations
-* [ ] Optimize Energy Aware Scheduling (EAS) task placement on the Helio G88 core layout (2× Cortex-A75 big cores + 6× Cortex-A55 LITTLE cores).
-* [ ] Lock lightweight background processes exclusively to Cortex-A55 LITTLE cores to achieve extreme battery lifespan.
-* [ ] Map real-world energy profiles in place of generic GKI common templates to prevent power waste.
+* [x] Optimize Energy Aware Scheduling (EAS) task placement on the Helio G88 core layout (2× Cortex-A75 big cores + 6× Cortex-A55 LITTLE cores).
+* [x] Lock lightweight background processes exclusively to Cortex-A55 LITTLE cores to achieve extreme battery lifespan.
+* [x] Map real-world energy profiles in place of generic GKI common templates to prevent power waste.
 
 ### 💾 Sprint 7 — eMMC 5.1 Storage & I/O Latency Tweaks
 * [ ] Mitigate micro-stutters during disk-heavy tasks (e.g. background installations) on slower budget storage (eMMC 5.1).
