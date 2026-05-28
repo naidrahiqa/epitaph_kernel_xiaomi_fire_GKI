@@ -124,8 +124,8 @@ graph TD
 
 ### 🛠️ Sprint 5 — Epitaph Rescue Desktop GUI Integration
 * [x] Integrate the desktop Go/Fyne-based **Epitaph Rescue Tool** with the build repository.
-* [ ] Automate dynamic recovery flashing for bootlooping devices.
-* [ ] Build a **visual PStore log parser** in the Rescue Tool that directly analyzes `console-ramoops-0` and outputs human-readable debugging guidance.
+* [x] Automate dynamic recovery flashing for bootlooping devices.
+* [x] Build a **visual PStore log parser** in the Rescue Tool that directly analyzes `console-ramoops-0` and outputs human-readable debugging guidance.
 
 ### ⚡ Sprint 6 — Helio G88 Heterogeneous CPU/GPU EAS Optimizations
 * [ ] Optimize Energy Aware Scheduling (EAS) task placement on the Helio G88 core layout (2× Cortex-A75 big cores + 6× Cortex-A55 LITTLE cores).
