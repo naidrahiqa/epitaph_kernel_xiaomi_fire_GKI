@@ -249,7 +249,7 @@ jobs:
           fi
 
           [ -f "fs/Makefile" ] && ! grep -q "susfs.o" "fs/Makefile" \
-            && echo 'obj-$(CONFIG_KSU_SUSFS) += susfs.o' >> "fs/Makefile"
+            && echo 'obj-$(CONFIG_SUSFS) += susfs.o' >> "fs/Makefile"
 
           git add fs/susfs.c include/linux/susfs.h fs/Makefile 2>/dev/null || true
 
@@ -271,7 +271,7 @@ jobs:
           fi
 
           # LANGKAH 4: Konfigurasi SUSFS untuk KernelSU-Next source
-          # CATATAN: Kita menggunakan pershoot/KernelSU-Next branch dev-susfs yang sudah
+          # CATATAN: Kita menggunakan pershoot/KernelSU-Next branch next-susfs yang sudah
           # di-pre-patched secara mandiri oleh pershoot untuk SUSFS v2.1.0 (sangat andal dan
           # terhindar dari signature mismatch). Patch manual 10_enable_susfs dilewati.
           KSU_KERNEL="drivers/kernelsu"
