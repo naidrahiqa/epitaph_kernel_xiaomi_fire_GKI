@@ -276,9 +276,9 @@ setup_ksu() {
     echo "Cloning KernelSU-Next (pershoot fork next-susfs branch)..."
     git clone https://github.com/pershoot/KernelSU-Next -b next-susfs KernelSU-Next
   else
-    # Kloning upstream resmi KernelSU-Next branch next (branch default utama repo ini) untuk build murni tanpa SUSFS
-    echo "Cloning KernelSU-Next (official upstream next branch)..."
-    git clone https://github.com/KernelSU-Next/KernelSU-Next -b next KernelSU-Next
+    # Kloning upstream resmi KernelSU-Next branch main (branch default utama repo ini) untuk build murni tanpa SUSFS
+    echo "Cloning KernelSU-Next (official upstream main branch)..."
+    git clone https://github.com/KernelSU-Next/KernelSU-Next -b main KernelSU-Next
   fi
 
   if [ ! -d "KernelSU-Next/kernel" ]; then
