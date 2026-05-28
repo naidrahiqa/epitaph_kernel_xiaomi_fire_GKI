@@ -692,13 +692,15 @@ jobs:
       - name: Generate Changelog
         run: |
           # Generate changelog dari git log antara tag sebelumnya dan tag saat ini
-          PREV_TAG=$(git -C kernel/common describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
-            GIT_CHANGELOG=$(git -C kernel/common log --oneline --no-merges \
+            GIT_CHANGELOG=$(git log --oneline --no-merges \
               ${PREV_TAG}..HEAD 2>/dev/null | head -20 \
               | sed 's/^/- /' || echo "- No commits found")
           else
-            GIT_CHANGELOG="- Initial build"
+            # Fallback ke 15 commit terakhir dari repository root
+            GIT_CHANGELOG=$(git log --oneline --no-merges -n 15 \
+              | sed 's/^/- /' || echo "- Initial build")
           fi
           echo "GIT_CHANGELOG<<EOF" >> $GITHUB_ENV
           echo "$GIT_CHANGELOG" >> $GITHUB_ENV
@@ -844,44 +846,41 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      # FIX: Hapus "append_body: false" — bukan key valid di softprops/action-gh-release@v2.
-      # Gunakan "make_latest: false" untuk kontrol release ordering saja jika diperlukan.
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "${{ inputs.release_tag }}"
           name: "Epitaph Kernel ${{ inputs.release_tag }}"
           body: |
-            ### 📦 Epitaph Kernel ${{ inputs.release_tag }}
-            - **Type:** GKI 6.6
-            - **Root:** KernelSU-Next v${{ env.KSU_VERSION }}
-            - **Governor:** schedutil (Optimized)
-            - **KMI:** ${{ env.KMI_GENERATION }}
-            - **Built:** ${{ env.BUILD_TIME }} (run #${{ github.run_number }})
+            ## 👑 Epitaph Kernel ${{ inputs.release_tag }}
 
-            ### 📝 Changes
-            ```
+            🚀 **Stable GKI 6.6 Kernel for Redmi 12 (fire)**
+            Running **Android 15 HyperOS 2.0** compiled with **${{ inputs.clang_toolchain }}**.
+
+            ### 📊 Build Info
+            - **Kernel Version:** `GKI 6.6`
+            - **Root Method:** `${{ inputs.ksu_method }} v${{ env.KSU_VERSION }}`
+            - **SUSFS Status:** `${{ inputs.with_susfs == 'true' && 'Integrated' || 'None' }}`
+            - **Kernel KMI:** `android15-${{ env.KMI_GENERATION }}`
+            - **Build Timestamp:** `${{ env.BUILD_TIME }}` (run #${{ github.run_number }})
+
+            ---
+
+            ### 📝 Changes (Changelog)
             ${{ env.GIT_CHANGELOG }}
-            ```
-            For the full changelog, see [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
 
             ---
 
-            ### 🔧 Emergency Recovery & Diagnostics:
-            * **Emergency Rescue Tool:** [Epitaph Rescue Tool ${{ env.RESCUE_VER }}](https://github.com/naidrahiqa/epitaph_rescue/releases/tag/${{ env.RESCUE_VER }}) - Direct download of portable recovery executable to extract RAMoops crash logs during bootloops.
-            * **Rescue boot.img:** Flash via Fastboot to recover stock boot systems and pull on-device diagnostics.
+            ### 🔧 Emergency & Rescue
+            * 🚨 **Bootloop?** Download the portable [Epitaph Rescue Tool ${{ env.RESCUE_VER }}](https://github.com/naidrahiqa/epitaph_rescue/releases/tag/${{ env.RESCUE_VER }}) to automatically restore stock and extract RAMoops logs with a single click.
+            * Flash the official stock `boot.img` via Fastboot to recover:
+              ```bash
+              fastboot flash boot boot_stock.img
+              ```
 
             ---
 
-            ### 🚀 Key Features:
-            * **📶 100% Stable WiFi & Hotspot:** Complete Netfilter NAT subsystem (IPv4/IPv6) + custom `cfg80211` & `mac80211` modular drivers with auto-loader fallback.
-            * **🎛️ Epitaph Tuner Post-Boot:** Schedutil CPU governor optimization, MediaTek GPU thermal throttle bypass, ZRAM swappiness set to 180, and 512KB storage read-ahead for a smooth, lag-free gaming experience!
-            * **🐏 Maximum Memory (Anti-OOM):** ZRAM ZSTD with parallel multi-core compression + Kernel Samepage Merging (KSM) to save up to 1GB+ RAM on 4GB variants.
-            * **🔋 Efficient Battery:** CPU frequency transition rate limit adjustments for an ultra-smooth UI without compromising battery life.
-
-            ---
-
-            > ⚠️ **You must flash vbmeta before installing this kernel!**
+            > ⚠️ **Prerequisite:** Make sure to disable verified boot verification via Fastboot:
             > ```
             > fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img
             > fastboot --disable-verity --disable-verification flash vbmeta_system vbmeta_system.img
@@ -910,11 +909,10 @@ jobs:
           SUSFS_LABEL="No"
           [ "${{ inputs.with_susfs }}" = "true" ] && SUSFS_LABEL="Yes"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
-          CAPTION=$(printf '<b>👑 Epitaph Kernel — Build Done</b>\n\n<b>Kernel:</b> %s\n<b>Version:</b> v%s\n<b>Developer:</b> ${{ inputs.author_name }}\n<b>Type:</b> GKI 6.6\n<b>Root:</b> ${{ inputs.ksu_method }} v%s\n<b>Governor:</b> schedutil\n<b>SUSFS:</b> %s\n<b>KMI:</b> %s\n<b>Toolchain:</b> ${{ inputs.clang_toolchain }}\n  └ <i>%s</i>\n<b>Size:</b> %s\n<b>Built:</b> %s\n\n<a href="%s">📦 GitHub Release</a>' \
-            "$ZIP_NAME" "${{ github.run_number }}" "${{ env.KSU_VERSION }}" "$SUSFS_LABEL" \
-            "${{ env.KMI_GENERATION }}" "${{ env.TOOLCHAIN_VER }}" "$ZIP_SIZE" "${{ env.BUILD_TIME }}" "$RELEASE_URL")
-          CAPTION="${CAPTION}\n\n<b>📝 Changes:</b>\n$(echo "${{ env.GIT_CHANGELOG }}" | head -10)"
-          CAPTION="${CAPTION}\n\n<b>🔧 Emergency Recovery:</b> <a href=\"https://github.com/naidrahiqa/epitaph_rescue/releases/tag/${{ env.RESCUE_VER }}\">Epitaph Rescue Tool ${{ env.RESCUE_VER }}</a>"
+          CAPTION=$(printf '👑 <b>Epitaph Kernel %s — Build Success!</b>\n━━━━━━━━━━━━━━━━━━━━━\n🚀 <b>GKI 6.6 Kernel for Redmi 12 (fire)</b>\nRunning Android 15 HyperOS 2.0\n\n📊 <b>System Metrics:</b>\n• <b>Root Method:</b> %s v%s\n• <b>Kernel KMI:</b> android15-%s\n• <b>SUSFS Status:</b> %s\n• <b>Compiler Info:</b> %s\n• <b>Package Size:</b> %s\n• <b>Timestamp:</b> %s (run #%s)\n\n📝 <b>Changelog:</b>\n%s\n━━━━━━━━━━━━━━━━━━━━━\n📦 <b>GitHub Release & Download:</b>\n%s\n\n🔧 <b>Emergency Rescue & Diagnostics:</b>\n<a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
+            "${{ inputs.release_tag }}" "${{ inputs.ksu_method }}" "${{ env.KSU_VERSION }}" "${{ env.KMI_GENERATION }}" "$SUSFS_LABEL" \
+            "${{ env.TOOLCHAIN_VER }}" "$ZIP_SIZE" "${{ env.BUILD_TIME }}" "${{ github.run_number }}" \
+            "$(echo "${{ env.GIT_CHANGELOG }}" | head -10)" "$RELEASE_URL" "${{ env.RESCUE_VER }}" "${{ env.RESCUE_VER }}")
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
           TG_LIMIT=52428800
           if [ "$ZIP_BYTES" -le "$TG_LIMIT" ]; then
