@@ -190,18 +190,22 @@ func (hp *HomePage) buildUI() {
 		hp.mainBox.Refresh()
 
 		hp.toolsMgr.StartDownload(func(prog float64, status string) {
-			hp.progressBar.SetValue(prog)
-			hp.lblToolsStatus.SetText(status)
+			fyne.Do(func() {
+				hp.progressBar.SetValue(prog)
+				hp.lblToolsStatus.SetText(status)
+			})
 		}, func(err error) {
-			hp.progressBar.Hide()
-			hp.btnDownload.Enable()
-			if err != nil {
-				hp.lblToolsStatus.SetText(fmt.Sprintf("Error: %v", err))
-			} else {
-				hp.lblToolsStatus.SetText("platform-tools installed successfully!")
-				hp.btnDownload.Hide()
-			}
-			hp.mainBox.Refresh()
+			fyne.Do(func() {
+				hp.progressBar.Hide()
+				hp.btnDownload.Enable()
+				if err != nil {
+					hp.lblToolsStatus.SetText(fmt.Sprintf("Error: %v", err))
+				} else {
+					hp.lblToolsStatus.SetText("platform-tools installed successfully!")
+					hp.btnDownload.Hide()
+				}
+				hp.updateToolsStatus()
+			})
 		})
 	})
 
@@ -220,7 +224,7 @@ func (hp *HomePage) buildUI() {
 		quickActionCard,
 	)
 
-	topGrid := container.NewGridWithColumns(2,
+	topGrid := container.NewAdaptiveGrid(2,
 		leftColumn,
 		rightColumn,
 	)

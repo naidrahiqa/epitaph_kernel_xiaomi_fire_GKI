@@ -123,7 +123,7 @@ graph TD
 ```
 
 ### 🛠️ Sprint 5 — Epitaph Rescue Desktop GUI Integration
-* [ ] Integrate the desktop Go/Fyne-based **Epitaph Rescue Tool** with the build repository.
+* [x] Integrate the desktop Go/Fyne-based **Epitaph Rescue Tool** with the build repository.
 * [ ] Automate dynamic recovery flashing for bootlooping devices.
 * [ ] Build a **visual PStore log parser** in the Rescue Tool that directly analyzes `console-ramoops-0` and outputs human-readable debugging guidance.
 

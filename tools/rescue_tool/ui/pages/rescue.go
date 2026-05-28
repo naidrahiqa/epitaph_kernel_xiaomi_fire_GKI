@@ -22,6 +22,21 @@ import (
 
 
 
+type fixedSizeLayout struct {
+	size fyne.Size
+}
+
+func (f *fixedSizeLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	for _, obj := range objects {
+		obj.Resize(f.size)
+		obj.Move(fyne.NewPos(0, 0))
+	}
+}
+
+func (f *fixedSizeLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	return f.size
+}
+
 // RescuePage is the full rescue wizard UI
 type RescuePage struct {
 	wizard      *rescue.Wizard
@@ -55,7 +70,9 @@ func NewRescuePage(dm *adb.DeviceManager, w fyne.Window) *RescuePage {
 		window:    w,
 	}
 	rp.wizard.SetOnUpdate(func() {
-		rp.refreshUI()
+		fyne.Do(func() {
+			rp.refreshUI()
+		})
 	})
 	rp.buildUI()
 	return rp
@@ -85,7 +102,8 @@ func (rp *RescuePage) buildUI() {
 		lbl.TextStyle = fyne.TextStyle{Bold: true}
 		rp.stepLabels[i] = lbl
 
-		stepContainer.Add(container.NewHBox(circle, widget.NewLabel(" "), lbl))
+		circleWrapper := container.New(&fixedSizeLayout{size: fyne.NewSize(14, 14)}, circle)
+		stepContainer.Add(container.NewHBox(circleWrapper, widget.NewLabel(" "), lbl))
 		if i < len(steps)-1 {
 			stepContainer.Add(widget.NewLabel("  →  "))
 		}
@@ -182,100 +200,159 @@ func (rp *RescuePage) runNextStep() {
 	state := rp.wizard.State()
 	step, status, _ := state.GetStep()
 
-	switch {
-	case step == rescue.StepDetect && (status == rescue.StatusPending || status == rescue.StatusFailed):
-		rp.actionBtn.Disable()
-		go func() {
-			rp.wizard.RunStep1Detect()
-			fyne.Do(func() {
-				rp.actionBtn.Enable()
-				st := rp.wizard.State()
-				s, ss, _ := st.GetStep()
-				if ss == rescue.StatusSuccess {
-					if s == rescue.StepDetect {
-						info := rp.deviceMgr.Detect()
-						if info.Mode == adb.ModeFastboot {
-							rp.actionBtn.SetText("Flash Stock Boot")
-							rp.actionBtn.SetIcon(theme.ConfirmIcon())
-						} else {
-							rp.actionBtn.SetText("Pull Crash Log")
-							rp.actionBtn.SetIcon(theme.DownloadIcon())
-						}
-					}
-				}
-			})
-		}()
+	// If the current step failed, we want to RETRY the current step!
+	if status == rescue.StatusFailed {
+		switch step {
+		case rescue.StepDetect:
+			rp.runDetectStep()
+		case rescue.StepFlashBoot:
+			rp.selectBootImage() // Let them select file and flash again
+		case rescue.StepWaitReboot:
+			rp.runWaitRebootStep()
+		case rescue.StepPullLog:
+			rp.runPullLogStep()
+		case rescue.StepAnalyze:
+			rp.runAnalyzeStep()
+		}
+		return
+	}
 
-	case step == rescue.StepDetect && status == rescue.StatusSuccess:
-		info := rp.deviceMgr.Detect()
-		if info.Mode == adb.ModeFastboot {
-			// Need to select boot.img file
-			rp.selectBootImage()
-		} else {
-			// Skip to pull log
-			state.SetStep(rescue.StepPullLog, rescue.StatusPending, "")
-			rp.actionBtn.SetText("Pull Crash Log")
-			rp.actionBtn.SetIcon(theme.DownloadIcon())
-			rp.actionBtn.Disable()
-			go func() {
-				rp.wizard.SetLogOutputDir(GetLogOutputDir())
-				rp.wizard.RunStep4PullLog()
-				fyne.Do(func() {
-					rp.actionBtn.Enable()
-					rp.actionBtn.SetText("Analyze Log")
-					rp.actionBtn.SetIcon(theme.SearchIcon())
-				})
-			}()
+	// Normal transitions
+	switch step {
+	case rescue.StepDetect:
+		if status == rescue.StatusPending {
+			rp.runDetectStep()
+		} else if status == rescue.StatusSuccess {
+			// Move to next step
+			info := rp.deviceMgr.Detect()
+			if info.Mode == adb.ModeFastboot {
+				state.SetStep(rescue.StepFlashBoot, rescue.StatusPending, "Device terdeteksi di Fastboot mode. Silakan pilih stock boot.img ROM Anda untuk di-flash.")
+				rp.selectBootImage()
+			} else {
+				// Connected in Android mode, skip flash & wait reboot
+				state.SetStep(rescue.StepPullLog, rescue.StatusPending, "Device terdeteksi di Android mode. Siap menarik crash log.")
+				rp.runPullLogStep()
+			}
 		}
 
-	case step == rescue.StepFlashBoot && status == rescue.StatusSuccess:
-		rp.actionBtn.SetText("Waiting for Reboot...")
-		rp.actionBtn.SetIcon(theme.SettingsIcon())
-		rp.actionBtn.Disable()
-		rp.progressBar.Show()
-		rp.progressBar.SetValue(0)
-		go func() {
-			rp.wizard.RunStep3WaitReboot()
-			fyne.Do(func() {
-				rp.progressBar.Hide()
-				rp.actionBtn.Enable()
-				rp.actionBtn.SetText("Pull Crash Log")
-				rp.actionBtn.SetIcon(theme.DownloadIcon())
-			})
-		}()
+	case rescue.StepFlashBoot:
+		if status == rescue.StatusSuccess {
+			state.SetStep(rescue.StepWaitReboot, rescue.StatusPending, "Menunggu perangkat melakukan booting ulang ke Android...")
+			rp.runWaitRebootStep()
+		}
 
-	case step == rescue.StepWaitReboot && status == rescue.StatusSuccess:
-		rp.actionBtn.Disable()
-		go func() {
-			rp.wizard.SetLogOutputDir(GetLogOutputDir())
-			rp.wizard.RunStep4PullLog()
-			fyne.Do(func() {
-				rp.actionBtn.Enable()
+	case rescue.StepWaitReboot:
+		if status == rescue.StatusSuccess {
+			state.SetStep(rescue.StepPullLog, rescue.StatusPending, "Siap menarik crash log dari memory PStore perangkat.")
+			rp.runPullLogStep()
+		}
+
+	case rescue.StepPullLog:
+		if status == rescue.StatusSuccess {
+			state.SetStep(rescue.StepAnalyze, rescue.StatusPending, "Siap menganalisis crash log yang berhasil ditarik.")
+			rp.runAnalyzeStep()
+		}
+
+	case rescue.StepAnalyze:
+		if status == rescue.StatusSuccess {
+			state.SetStep(rescue.StepComplete, rescue.StatusSuccess, "Proses pemulihan kernel selesai dengan sukses!")
+			OpenFolderInExplorer(GetLogOutputDir())
+		}
+
+	case rescue.StepComplete:
+		OpenFolderInExplorer(GetLogOutputDir())
+	}
+}
+
+func (rp *RescuePage) runDetectStep() {
+	rp.actionBtn.Disable()
+	go func() {
+		rp.wizard.RunStep1Detect()
+		fyne.Do(func() {
+			rp.actionBtn.Enable()
+			st := rp.wizard.State()
+			s, ss, _ := st.GetStep()
+			if ss == rescue.StatusSuccess {
+				if s == rescue.StepDetect {
+					info := rp.deviceMgr.Detect()
+					if info.Mode == adb.ModeFastboot {
+						rp.actionBtn.SetText("Pilih & Flash Boot")
+						rp.actionBtn.SetIcon(theme.ConfirmIcon())
+					} else {
+						rp.actionBtn.SetText("Tarik Crash Log")
+						rp.actionBtn.SetIcon(theme.DownloadIcon())
+					}
+				}
+			} else {
+				rp.actionBtn.SetText("Retry Detection")
+				rp.actionBtn.SetIcon(theme.ViewRefreshIcon())
+			}
+		})
+	}()
+}
+
+func (rp *RescuePage) runWaitRebootStep() {
+	rp.actionBtn.SetText("Waiting for Reboot...")
+	rp.actionBtn.SetIcon(theme.SettingsIcon())
+	rp.actionBtn.Disable()
+	rp.progressBar.Show()
+	rp.progressBar.SetValue(0)
+	go func() {
+		rp.wizard.RunStep3WaitReboot()
+		fyne.Do(func() {
+			rp.progressBar.Hide()
+			rp.actionBtn.Enable()
+			st := rp.wizard.State()
+			_, ss, _ := st.GetStep()
+			if ss == rescue.StatusSuccess {
+				rp.actionBtn.SetText("Tarik Crash Log")
+				rp.actionBtn.SetIcon(theme.DownloadIcon())
+			} else {
+				rp.actionBtn.SetText("Retry Reboot Wait")
+				rp.actionBtn.SetIcon(theme.ViewRefreshIcon())
+			}
+		})
+	}()
+}
+
+func (rp *RescuePage) runPullLogStep() {
+	rp.actionBtn.Disable()
+	go func() {
+		rp.wizard.SetLogOutputDir(GetLogOutputDir())
+		rp.wizard.RunStep4PullLog()
+		fyne.Do(func() {
+			rp.actionBtn.Enable()
+			st := rp.wizard.State()
+			_, ss, _ := st.GetStep()
+			if ss == rescue.StatusSuccess {
 				rp.actionBtn.SetText("Analyze Log")
 				rp.actionBtn.SetIcon(theme.SearchIcon())
-			})
-		}()
+			} else {
+				rp.actionBtn.SetText("Retry Pull Log")
+				rp.actionBtn.SetIcon(theme.ViewRefreshIcon())
+			}
+		})
+	}()
+}
 
-	case step == rescue.StepPullLog && status == rescue.StatusSuccess:
-		rp.actionBtn.Disable()
-		go func() {
-			rp.wizard.RunStep5Analyze()
-			fyne.Do(func() {
+func (rp *RescuePage) runAnalyzeStep() {
+	rp.actionBtn.Disable()
+	go func() {
+		rp.wizard.RunStep5Analyze()
+		fyne.Do(func() {
+			rp.actionBtn.Enable()
+			st := rp.wizard.State()
+			_, ss, _ := st.GetStep()
+			if ss == rescue.StatusSuccess {
 				rp.actionBtn.SetText("Buka Folder Log")
 				rp.actionBtn.SetIcon(theme.FolderIcon())
-				rp.actionBtn.Enable()
 				rp.showAnalysisResults()
-			})
-		}()
-
-	case step == rescue.StepComplete:
-		OpenFolderInExplorer(GetLogOutputDir())
-
-	default:
-		// Retry current step
-		rp.actionBtn.SetText("Retry")
-		rp.actionBtn.SetIcon(theme.ViewRefreshIcon())
-	}
+			} else {
+				rp.actionBtn.SetText("Retry Analysis")
+				rp.actionBtn.SetIcon(theme.ViewRefreshIcon())
+			}
+		})
+	}()
 }
 
 func (rp *RescuePage) selectBootImage() {
@@ -286,20 +363,28 @@ func (rp *RescuePage) selectBootImage() {
 		reader.Close()
 		path := reader.URI().Path()
 
-		rp.actionBtn.Disable()
-		go func() {
-			rp.wizard.RunStep2Flash(path)
-			fyne.Do(func() {
-				rp.actionBtn.Enable()
-
-				st := rp.wizard.State()
-				_, ss, _ := st.GetStep()
-				if ss == rescue.StatusSuccess {
-					rp.actionBtn.SetText("Wait Reboot")
-					rp.actionBtn.SetIcon(theme.SettingsIcon())
-				}
-			})
-		}()
+		confirmMsg := fmt.Sprintf("Apakah Anda yakin ingin mem-flash stock boot image:\n%s\n\nTindakan ini akan menimpa partisi boot perangkat Anda via Fastboot.", path)
+		dialog.ShowConfirm("Konfirmasi Flash Stock Boot", confirmMsg, func(ok bool) {
+			if !ok {
+				return
+			}
+			rp.actionBtn.Disable()
+			go func() {
+				rp.wizard.RunStep2Flash(path)
+				fyne.Do(func() {
+					rp.actionBtn.Enable()
+					st := rp.wizard.State()
+					_, ss, _ := st.GetStep()
+					if ss == rescue.StatusSuccess {
+						rp.actionBtn.SetText("Wait Reboot")
+						rp.actionBtn.SetIcon(theme.SettingsIcon())
+					} else {
+						rp.actionBtn.SetText("Retry Flashing")
+						rp.actionBtn.SetIcon(theme.ViewRefreshIcon())
+					}
+				})
+			}()
+		}, rp.window)
 	}, rp.window)
 
 	fd.SetFilter(storage.NewExtensionFileFilter([]string{".img"}))
@@ -412,20 +497,27 @@ func (rp *RescuePage) directFlashBoot() {
 			return
 		}
 
-		progress := dialog.NewCustomWithoutButtons("Flashing...", widget.NewActivity(), rp.window)
-		progress.Show()
-
-		go func() {
-			fb := rp.deviceMgr.GetFastbootClient()
-			output, err := fb.Flash("boot", path)
-			progress.Hide()
-
-			if err != nil {
-				dialog.ShowError(fmt.Errorf("flash gagal: %v\nOutput: %s", err, output), rp.window)
-			} else {
-				dialog.ShowInformation("Berhasil!", fmt.Sprintf("Flash boot.img berhasil dilakukan!\n\nOutput:\n%s", output), rp.window)
+		confirmMsg := fmt.Sprintf("Apakah Anda yakin ingin mem-flash file boot:\n%s\n\nTindakan salah dapat mengakibatkan HP bootloop/hard-brick.", path)
+		dialog.ShowConfirm("Konfirmasi Flash", confirmMsg, func(ok bool) {
+			if !ok {
+				return
 			}
-		}()
+			progress := dialog.NewCustomWithoutButtons("Flashing...", widget.NewActivity(), rp.window)
+			progress.Show()
+
+			go func() {
+				fb := rp.deviceMgr.GetFastbootClient()
+				output, err := fb.Flash("boot", path)
+				fyne.Do(func() {
+					progress.Hide()
+					if err != nil {
+						dialog.ShowError(fmt.Errorf("flash gagal: %v\nOutput: %s", err, output), rp.window)
+					} else {
+						dialog.ShowInformation("Berhasil!", fmt.Sprintf("Flash boot.img berhasil dilakukan!\n\nOutput:\n%s", output), rp.window)
+					}
+				})
+			}()
+		}, rp.window)
 	}, rp.window)
 
 	fd.SetFilter(storage.NewExtensionFileFilter([]string{".img"}))

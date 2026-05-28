@@ -142,7 +142,7 @@ func (m *Manager) downloadAndExtract(onProgress func(float64, string)) error {
 	zipPath := filepath.Join(destDir, "platform-tools.zip")
 	logger.Info("Downloading platform-tools from %s to %s", WindowsSDKURL, zipPath)
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: 180 * time.Second}
 	resp, err := client.Get(WindowsSDKURL)
 	if err != nil {
 		return err
@@ -190,17 +190,8 @@ func (m *Manager) downloadAndExtract(onProgress func(float64, string)) error {
 	}
 	out.Close()
 
-	// Extract file
-	m.mu.Lock()
-	m.statusText = "Extracting files..."
-	m.progress = 0.75
-	m.mu.Unlock()
-	if onProgress != nil {
-		onProgress(0.75, "Extracting platform-tools...")
-	}
-
 	logger.Info("Extracting zip: %s to %s", zipPath, destDir)
-	if err := unzip(zipPath, destDir); err != nil {
+	if err := unzip(zipPath, destDir, onProgress); err != nil {
 		return err
 	}
 
@@ -211,15 +202,25 @@ func (m *Manager) downloadAndExtract(onProgress func(float64, string)) error {
 	return nil
 }
 
-func unzip(src string, dest string) error {
+func unzip(src string, dest string, onProgress func(float64, string)) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
 
-	for _, f := range r.File {
+	totalFiles := len(r.File)
+
+	for idx, f := range r.File {
 		fpath := filepath.Join(dest, f.Name)
+		
+		// Update progress visually during extraction
+		if onProgress != nil && totalFiles > 0 {
+			prog := 0.7 + (float64(idx)/float64(totalFiles))*0.3
+			statusText := fmt.Sprintf("Extracting: %s... (%.0f%%)", filepath.Base(f.Name), prog*100)
+			onProgress(prog, statusText)
+		}
+
 		if f.FileInfo().IsDir() {
 			os.MkdirAll(fpath, os.ModePerm)
 			continue

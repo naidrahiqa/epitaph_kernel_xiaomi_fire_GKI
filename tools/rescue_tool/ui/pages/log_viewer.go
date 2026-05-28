@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -403,6 +404,46 @@ func (lv *LogViewerPage) startLiveStream(mode string) {
 			}
 		}()
 
+		var batchMu sync.Mutex
+		var lineBatch []string
+		flushTicker := time.NewTicker(100 * time.Millisecond)
+		stopFlushChan := make(chan struct{})
+
+		// Background batch flusher goroutine
+		go func() {
+			for {
+				select {
+				case <-flushTicker.C:
+					batchMu.Lock()
+					if len(lineBatch) == 0 {
+						batchMu.Unlock()
+						continue
+					}
+					batchToFlush := lineBatch
+					lineBatch = nil
+					batchMu.Unlock()
+
+					fyne.Do(func() {
+						if len(lv.logLines) > 1500 {
+							overCount := len(lv.logLines) + len(batchToFlush) - 1500
+							if overCount > 0 {
+								if overCount >= len(lv.logLines) {
+									lv.logLines = nil
+								} else {
+									lv.logLines = lv.logLines[overCount:]
+								}
+							}
+						}
+						lv.logLines = append(lv.logLines, batchToFlush...)
+						lv.filterLines(lv.searchEntry.Text)
+					})
+				case <-stopFlushChan:
+					flushTicker.Stop()
+					return
+				}
+			}
+		}()
+
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
@@ -411,15 +452,12 @@ func (lv *LogViewerPage) startLiveStream(mode string) {
 			line = strings.TrimSuffix(line, "\n")
 			line = strings.TrimSuffix(line, "\r")
 
-			fyne.Do(func() {
-				if len(lv.logLines) > 1500 {
-					lv.logLines = lv.logLines[1:]
-				}
-				lv.logLines = append(lv.logLines, line)
-				lv.filterLines(lv.searchEntry.Text)
-			})
+			batchMu.Lock()
+			lineBatch = append(lineBatch, line)
+			batchMu.Unlock()
 		}
 
+		close(stopFlushChan)
 		_ = cmd.Wait()
 
 		fyne.Do(func() {
