@@ -171,7 +171,7 @@ def main():
             f.write(bazel_content)
         print("✅ Berkas BUILD.bazel utama berhasil diperbarui!")
 
-    # 3. NONAKTIFKAN -Werror DI TOP-LEVEL Makefile
+    # 3. NONAKTIFKAN -Werror & SUNTIK OPTIMASI ARMv8.2-A / CORTEX-A75 DI TOP-LEVEL Makefile
     if os.path.exists("Makefile"):
         with open("Makefile", "r") as f:
             makefile_content = f.read()
@@ -180,9 +180,17 @@ def main():
         if "-Werror" in makefile_content:
             makefile_content = makefile_content.replace("KBUILD_CFLAGS += -Werror", "KBUILD_CFLAGS += -Wno-error")
             makefile_content = re.sub(r"\b-Werror\b", "-Wno-error", makefile_content)
-            with open("Makefile", "w") as f:
-                f.write(makefile_content)
             print("✅ Berhasil menonaktifkan -Werror di Makefile!")
+        
+        # Suntikkan optimasi arsitektur spesifik ARMv8.2-A Cortex-A75/A55 untuk Helio G88 (MT6769)
+        if "march=armv8.2-a" not in makefile_content:
+            arch_flags = "\n# Helio G88 (MT6769) Cortex-A75/A55 specific optimizations\n"
+            arch_flags += "KBUILD_CFLAGS += -march=armv8.2-a+fp+simd -mtune=cortex-a75\n"
+            makefile_content += arch_flags
+            print("✅ Berhasil menyuntikkan optimasi Cortex-A75/A55 di Makefile!")
+
+        with open("Makefile", "w") as f:
+            f.write(makefile_content)
 
 if __name__ == "__main__":
     main()
