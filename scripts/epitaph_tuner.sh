@@ -198,7 +198,49 @@ for policy in /sys/devices/system/cpu/cpufreq/policy*; do
     if [ "$gov" = "schedutil" ]; then
       write_value "$UP_RATE" "$policy/schedutil/up_rate_limit_us"
       write_value "$DOWN_RATE" "$policy/schedutil/down_rate_limit_us"
-      log_msg "Tuned $policy (schedutil): up=$UP_RATE, down=$DOWN_RATE"
+      
+      # Nilai boost kustom untuk Epitaph Schedutil
+      p_num="${policy##*policy}"
+      b_factor=0
+      b_threshold=95
+      
+      if [ "$p_num" -eq 6 ]; then
+        # Kebijakan 6 (big cores: Cortex-A75)
+        case "$MODE" in
+          performance)
+            b_factor=40
+            b_threshold=30
+            ;;
+          battery)
+            b_factor=0
+            b_threshold=95
+            ;;
+          balanced|*)
+            b_factor=15
+            b_threshold=60
+            ;;
+        esac
+      else
+        # Kebijakan 0 (LITTLE cores: Cortex-A55)
+        case "$MODE" in
+          performance)
+            b_factor=15
+            b_threshold=60
+            ;;
+          battery)
+            b_factor=0
+            b_threshold=95
+            ;;
+          balanced|*)
+            b_factor=5
+            b_threshold=80
+            ;;
+        esac
+      fi
+      
+      write_value "$b_factor" "$policy/schedutil/epitaph_boost_factor"
+      write_value "$b_threshold" "$policy/schedutil/epitaph_boost_threshold"
+      log_msg "Tuned $policy (schedutil): up=$UP_RATE, down=$DOWN_RATE, boost_factor=$b_factor, boost_threshold=$b_threshold"
     fi
   fi
 done
@@ -392,6 +434,49 @@ write_value "bbr" /proc/sys/net/ipv4/tcp_congestion_control && log_msg "TCP cong
 write_value "fq" /proc/sys/net/core/default_qdisc && log_msg "Default qdisc set to FQ"
 write_value 3 /proc/sys/net/ipv4/tcp_fastopen && log_msg "TCP Fast Open set to 3"
 write_value 1 /proc/sys/net/ipv4/tcp_slow_start_after_idle && log_msg "TCP slow start after idle dinonaktifkan (1)"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 8. HELIO G88 HETEROGENEOUS CPU/GPU EAS OPTIMIZATIONS
+# ──────────────────────────────────────────────────────────────────────────────
+log_msg "Section 8: Menerapkan cpuset locking & optimasi EAS Helio G88..."
+
+# Menghindari intervensi background processes pada big cores (6-7) untuk baterai awet
+write_value "0-5" /dev/cpuset/background/cpus
+write_value "0-5" /dev/cpuset/system-background/cpus
+write_value "0-5" /dev/cpuset/restricted/cpus
+
+# Menjamin foreground dan aplikasi utama (top-app) mendapat alokasi core optimal (0-7)
+write_value "0-7" /dev/cpuset/top-app/cpus
+write_value "0-7" /dev/cpuset/foreground/cpus
+
+# Optimasi parameter penjadwal berdasarkan profil daya aktif
+LATENCY_NS=16000000
+MIN_GRAN_NS=3000000
+WAKEUP_GRAN_NS=4000000
+
+case "$MODE" in
+  performance)
+    LATENCY_NS=10000000      # 10ms untuk responsivitas tinggi (menghilangkan micro-stutter)
+    MIN_GRAN_NS=1500000      # 1.5ms
+    WAKEUP_GRAN_NS=2000000   # 2.0ms
+    ;;
+  battery)
+    LATENCY_NS=24000000      # 24ms untuk meminimalkan siklus bangun CPU (menghemat baterai)
+    MIN_GRAN_NS=4000000      # 4.0ms
+    WAKEUP_GRAN_NS=6000000   # 6.0ms
+    ;;
+  balanced|*)
+    LATENCY_NS=16000000      # 16ms untuk penggunaan sehari-hari
+    MIN_GRAN_NS=3000000      # 3.0ms
+    WAKEUP_GRAN_NS=4000000   # 4.0ms
+    ;;
+esac
+
+write_value "$LATENCY_NS" /proc/sys/kernel/sched_latency_ns
+write_value "$MIN_GRAN_NS" /proc/sys/kernel/sched_min_granularity_ns
+write_value "$WAKEUP_GRAN_NS" /proc/sys/kernel/sched_wakeup_granularity_ns
+
+log_msg "EAS scheduler parameters applied: latency=$LATENCY_NS ns, min_granularity=$MIN_GRAN_NS ns"
 
 # Tulis status akhir untuk dibaca user/KSU
 echo "active_profile: $MODE" > "$STATUS_FILE"
