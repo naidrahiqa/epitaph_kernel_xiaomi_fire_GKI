@@ -1062,8 +1062,8 @@ jobs:
 
             ---
 
-            ### ðŸ”§ Emergency & Rescue
-            * ðŸš¨ **Bootloop?** Download the portable [Epitaph Rescue Tool ${{ env.RESCUE_VER }}](https://github.com/naidrahiqa/epitaph_rescue/releases/tag/${{ env.RESCUE_VER }}) to automatically restore stock and extract RAMoops logs with a single click.
+            ### 🔧 Emergency & Rescue
+            * 🚨 **Bootloop?** Download the portable [Epitaph Rescue Tool ${{ env.RESCUE_VER }}](https://github.com/naidrahiqa/epitaph_rescue/releases/tag/${{ env.RESCUE_VER }}) to automatically restore stock and extract RAMoops logs with a single click.
             * Flash the official stock `boot.img` via Fastboot to recover:
               ```bash
               fastboot flash boot boot_stock.img
@@ -1071,7 +1071,7 @@ jobs:
 
             ---
 
-            > âš ï¸ **Prerequisite:** Make sure to disable verified boot verification via Fastboot:
+            > ⚠️ **Prerequisite:** Make sure to disable verified boot verification via Fastboot:
             > ```
             > fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img
             > fastboot --disable-verity --disable-verification flash vbmeta_system vbmeta_system.img
@@ -1171,14 +1171,14 @@ jobs:
       - name: Post Build Summary Comment
         if: always()
         run: |
-          echo "=== ðŸ“¢ Menulis Ringkasan Build ==="
-          STATUS="âŒ GAGAL (FAILED)"
+          echo "=== 📢 Menulis Ringkasan Build ==="
+          STATUS="❌ GAGAL (FAILED)"
           if [ "${{ job.status }}" = "success" ]; then
-            STATUS="âœ… BERHASIL (SUCCESS)"
+            STATUS="✅ BERHASIL (SUCCESS)"
           fi
           
           {
-            echo "## ðŸ› ï¸ Epitaph Kernel Build Summary"
+            echo "## 🛠️ Epitaph Kernel Build Summary"
             echo "- **Status:** $STATUS"
             echo "- **Toolchain:** \`${{ inputs.clang_toolchain || 'bazel-default' }}\`"
             echo "- **Metode Root:** \`${{ inputs.ksu_method }}\` v${{ env.KSU_VERSION || 'unknown' }}"
@@ -1191,16 +1191,16 @@ jobs:
       - name: Report Build Performance Metrics
         if: always()
         run: |
-          echo "=== ðŸ“Š Laporan Performa Waktu Build ==="
+          echo "=== 📊 Laporan Performa Waktu Build ==="
           METRICS_FILE="/tmp/build_metrics/steps.csv"
           if [ ! -f "$METRICS_FILE" ]; then
-            echo "âš ï¸ Berkas metrik performa tidak ditemukan!"
+            echo "⚠️ Berkas metrik performa tidak ditemukan!"
             exit 0
           fi
           
           {
             echo ""
-            echo "### ðŸ“Š Build Performance Metrics"
+            echo "### 📊 Build Performance Metrics"
             echo "| Tahapan Build (Step Name) | Waktu Mulai | Waktu Selesai | Durasi (Detik/Menit) |"
             echo "| :--- | :--- | :--- | :--- |"
           } >> $GITHUB_STEP_SUMMARY
