@@ -177,8 +177,9 @@ download_toolchain() {
       echo "TOOLCHAIN_NAME=ZyClang" >> "$GITHUB_ENV"
       ;;
     aosp-latest)
-      echo "📥 Melakukan kloning AOSP Clang (r530567)..."
-      retry_cmd git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/clang-r530567 clang-aosp
+      echo "📥 Mengunduh AOSP Clang (r530567)..."
+      retry_cmd aria2c -x16 -s16 -k1M --retry-wait=5 --max-tries=10 -o clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz"
+      smart_extract clang.tar.gz clang-aosp
       CLANG_PATH="$GITHUB_WORKSPACE/prebuilts/clang/host/linux-x86/clang-aosp"
       echo "CUSTOM_CLANG_PATH=$CLANG_PATH" >> "$GITHUB_ENV"
       echo "TOOLCHAIN_NAME=AOSPClang" >> "$GITHUB_ENV"

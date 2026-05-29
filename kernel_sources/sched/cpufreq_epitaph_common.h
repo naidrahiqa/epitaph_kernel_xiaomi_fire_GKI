@@ -17,11 +17,14 @@
 #include <linux/kthread.h>
 #include <linux/slab.h>
 #include <linux/sched/cpufreq.h>
-#include <linux/sched/types.h>
+#include <uapi/linux/sched/types.h>
 #include <linux/irq_work.h>
 #include <linux/tick.h>
 #include <linux/units.h>
 #include <trace/events/power.h>
+
+#include <linux/sched/signal.h>
+#include <linux/sched/cputime.h>
 
 #include "sched.h"
 #include "epitaph_input.h"
@@ -234,8 +237,8 @@ static void EP(_get_util)(struct EP(_cpu) *epc)
 	unsigned long util = cpu_util_cfs_boost(epc->cpu);
 	unsigned long max = arch_scale_cpu_capacity(epc->cpu);
 
-	epc->bw_min = effective_cpu_util(epc->cpu, util, NULL, &max);
-	epc->util = effective_cpu_util(epc->cpu, util, &max, NULL);
+	epc->bw_min = 0;
+	epc->util = effective_cpu_util(epc->cpu, util, FREQUENCY_UTIL, NULL);
 	epc->max = max;
 }
 
