@@ -66,6 +66,17 @@ MAKEFILE_LINES = [
     "obj-$(CONFIG_CPU_FREQ_EPITAPH_INPUT_BOOST) += epitaph_input.o",
 ]
 
+# Default governor choice entry for Kconfig
+# This must be injected into the existing "choice" block for "Default CPUFreq governor"
+DEFAULT_GOV_CHOICE_ENTRY = """
+config CPU_FREQ_DEFAULT_GOV_EPITAPH
+    bool "'epitaph' as default governor"
+    depends on CPU_FREQ_GOV_EPITAPH
+    help
+      Use the Epitaph balanced governor as the default CPU frequency governor.
+      This is a schedutil fork optimized for Redmi 12 / Helio G88.
+"""
+
 
 def copy_sources():
     """Copy governor source files into kernel/sched/."""
@@ -139,10 +150,71 @@ def patch_makefile():
     print("  ✅ Patched kernel/sched/Makefile with governor & boost build rules")
 
 
+def patch_default_governor_choice():
+    """Inject CONFIG_CPU_FREQ_DEFAULT_GOV_EPITAPH into the existing default governor choice block."""
+    kconfig_path = os.path.join("drivers", "cpufreq", "Kconfig")
+    if not os.path.isfile(kconfig_path):
+        print(f"WARNING: {kconfig_path} not found, skipping default governor choice patch")
+        return
+
+    with open(kconfig_path, "r") as f:
+        lines = f.readlines()
+
+    if any("CPU_FREQ_DEFAULT_GOV_EPITAPH" in line for line in lines):
+        print("  ℹ️ Default governor choice already contains Epitaph entry, skipping")
+        return
+
+    # Find the choice block containing default governor options using line-by-line parsing
+    # Strategy: find "choice" with "Default CPUFreq governor" prompt, then find the last config before endchoice
+    in_choice_block = False
+    choice_start_idx = -1
+    choice_end_idx = -1
+    last_config_idx = -1
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("choice") and i + 1 < len(lines):
+            # Check if this choice block has the "Default CPUFreq governor" prompt
+            for j in range(i + 1, min(i + 5, len(lines))):
+                if "Default CPUFreq governor" in lines[j]:
+                    in_choice_block = True
+                    choice_start_idx = i
+                    break
+        if in_choice_block:
+            if stripped.startswith("config CPU_FREQ_DEFAULT_GOV_"):
+                last_config_idx = i
+            if stripped == "endchoice":
+                choice_end_idx = i
+                break
+
+    if choice_start_idx != -1 and choice_end_idx != -1 and last_config_idx != -1:
+        # Find the end of the last config block before endchoice
+        insert_idx = last_config_idx + 1
+        # Skip past the help text and any blank lines of the last config
+        while insert_idx < choice_end_idx:
+            if lines[insert_idx].strip().startswith("config ") or lines[insert_idx].strip() == "endchoice":
+                break
+            insert_idx += 1
+
+        # Insert the Epitaph choice entry
+        entry_lines = DEFAULT_GOV_CHOICE_ENTRY.strip().split("\n")
+        for k, entry_line in enumerate(reversed(entry_lines)):
+            lines.insert(insert_idx, entry_line + "\n")
+
+        with open(kconfig_path, "w") as f:
+            f.writelines(lines)
+        print("  ✅ Patched drivers/cpufreq/Kconfig with default governor choice entry for Epitaph")
+        return
+
+    print("  ⚠️ Could not find default governor choice block in drivers/cpufreq/Kconfig")
+    print("     CONFIG_CPU_FREQ_DEFAULT_GOV_EPITAPH may not work as expected")
+
+
 def main():
     print("🔧 Integrating Epitaph CPU governors & boost coordinator into kernel tree...")
     copy_sources()
     patch_kconfig()
+    patch_default_governor_choice()
     patch_makefile()
     print("✅ Epitaph governor & boost integration complete")
 

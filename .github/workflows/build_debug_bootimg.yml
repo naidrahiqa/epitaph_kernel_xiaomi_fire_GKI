@@ -144,14 +144,14 @@ jobs:
           BUILD_OK=false
           for attempt in 1 2 3; do
             echo "Bazel build attempt $attempt/3..."
-            # Jalankan build target kernel_aarch64 (utama) terlebih dahulu dengan ThinLTO
+            # Jalankan build target kernel_aarch64 (utama) terlebih dahulu dengan --lto=none (aman untuk 7GB RAM runner)
             # Jika kompilasi utama berhasil, dist target boleh gagal saat meng-copy modul yang di-disable.
-            if tools/bazel build --disk_cache=/home/runner/.cache/bazel --lto=thin \
+            if tools/bazel build --disk_cache=/home/runner/.cache/bazel --lto=none \
               --local_resources=memory=6144 --jobs=2 --noshow_progress --noshow_loading_progress \
               //common:kernel_aarch64 2>&1 | tee build.log; then
               
               # Coba jalankan target dist (tidak apa-apa jika exit code non-zero, karena modul.ko minim)
-              tools/bazel run --disk_cache=/home/runner/.cache/bazel --lto=thin \
+              tools/bazel run --disk_cache=/home/runner/.cache/bazel --lto=none \
                 --local_resources=memory=6144 --jobs=2 --noshow_progress --noshow_loading_progress \
                 //common:kernel_aarch64_dist -- --dist_dir=$GITHUB_WORKSPACE/dist || true
                 
