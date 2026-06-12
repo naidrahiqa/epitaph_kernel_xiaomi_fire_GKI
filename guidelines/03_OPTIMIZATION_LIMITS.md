@@ -50,4 +50,4 @@
 ## 5. Standarisasi Format Tag Rilis
 * **Aturan Utama**: Penulisan tag rilis pada repositori GitHub harus unik dan mencerminkan konfigurasi build guna menghindari bentrokan artefak.
 * **Format Standar**: `{tag}-{toolchain}-{governor}-{susfs}`
-* **Contoh Implementasi**: `v1.0-bazel-default-schedutil-false`
+* **Contoh Implementasi**: `v1.0-zyc-latest-schedutil-true`

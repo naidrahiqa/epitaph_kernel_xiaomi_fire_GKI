@@ -22,7 +22,6 @@ body:
     attributes:
       label: Toolchain
       options:
-        - bazel-default
         - zyc-latest
     validations:
       required: true

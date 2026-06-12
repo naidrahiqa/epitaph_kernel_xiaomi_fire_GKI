@@ -10,7 +10,7 @@ Redmi 12 (*fire*) GKI 6.6 builds running Android 15 HyperOS 2.0 feature a modula
 Before installing the custom Epitaph kernel, prepare the following on your PC or phone:
 1. **Official Stock Boot Image (`boot.img`)**: Extract this from the official Fastboot ROM corresponding to the HyperOS 2.0 version currently running on your device.
 2. **Kernel Flashing App**: Install **Kernel Flasher** or Franco Kernel Manager (FKM) and grant them Root access (KernelSU / Magisk).
-3. **AnyKernel3 ZIP Package**: The compiled zip file produced by the GitHub Actions workflow (e.g., `Epitaph-Kernel-v124-bazel-default.zip`).
+3. **AnyKernel3 ZIP Package**: The compiled zip file produced by the GitHub Actions workflow (e.g., `Epitaph-Kernel-v124-ZyClang-kernelsu-next-SUSFS.zip`).
 
 ---
 

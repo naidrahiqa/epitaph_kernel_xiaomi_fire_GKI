@@ -22,7 +22,7 @@ on:
       clang_toolchain:
         required: true
         type: string
-        default: 'bazel-default'
+        default: 'zyc-latest'
       release_tag:
         required: true
         type: string
@@ -47,7 +47,7 @@ env:
 
 jobs:
   build:
-    name: "Build GKI ${{ inputs.with_susfs == 'true' && '+ SUSFS' || 'No SUSFS' }} (${{ inputs.clang_toolchain }})"
+    name: "Build GKI + SUSFS (ZyClang)"
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
@@ -99,40 +99,14 @@ jobs:
 
       - name: Initialize Environment
         run: |
-          # Tentukan nama singkat toolchain untuk penamaan file zip output
-          TC_NAME="${{ inputs.clang_toolchain }}"
-          if [ "$TC_NAME" = "bazel-default" ] || [ -z "$TC_NAME" ]; then
-            TC_NAME="Bazel"
-          elif [ "$TC_NAME" = "zyc-latest" ]; then
-            TC_NAME="ZyClang"
-          fi
-          echo "TOOLCHAIN_NAME=${TC_NAME}" >> $GITHUB_ENV
-          
-          # Tambahkan label '-SUSFS' pada nama file jika build ini menggunakan patch SUSFS
-          SUSFS_LABEL=""
-          [ "${{ inputs.with_susfs }}" = "true" ] && SUSFS_LABEL="-SUSFS"
-          
-          # Ambil tanggal build saat ini (format: HariBulanTahun, WIB timezone)
+          echo "TOOLCHAIN_NAME=ZyClang" >> $GITHUB_ENV
           BUILD_DATE=$(TZ='Asia/Jakarta' date '+%d%m%Y')
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
-          
-          # Susun nama dasar file zip kernel: {NamaKustom}-{Toolchain}-{MetodeRoot}[-SUSFS]-{Tanggal}
-          BASE_NAME="${{ inputs.custom_name }}-${TC_NAME}-${{ inputs.ksu_method }}${SUSFS_LABEL}-${BUILD_DATE}"
+          BASE_NAME="${{ inputs.custom_name }}-ZyClang-${{ inputs.ksu_method }}-SUSFS-${BUILD_DATE}"
           echo "ZIP_NAME=${BASE_NAME}" >> $GITHUB_ENV
           echo "✅ Environment initialized: ${BASE_NAME}"
 
-      # Gunakan hashFiles untuk cache key, bukan github.sha.
-      # github.sha berubah di setiap commit baru sehingga cache tidak akan pernah hit.
-      # Dengan hashFiles, cache hanya akan dibuat ulang jika file di folder patches atau file workflow berubah.
-      - name: Restore Bazel Cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/bazel
-          key: gki-bazel-${{ inputs.ksu_method }}-${{ inputs.clang_toolchain }}-${{ hashFiles('patches/**', 'workflow_scripts/**', '.github/workflows/_build_kernel_core.yml') }}
-          restore-keys: |
-            gki-bazel-${{ inputs.ksu_method }}-${{ inputs.clang_toolchain }}-
-            gki-bazel-${{ inputs.ksu_method }}-
-            gki-bazel-
+
 
       - name: Prepare Kernel Build (Common)
         run: |
@@ -507,50 +481,46 @@ jobs:
           echo "# Energy Model" >> "$DEFCONFIG"
           add_cfg "CONFIG_ENERGY_MODEL=y"
 
-          if [ "${{ inputs.with_susfs }}" == "true" ]; then
-            if [ "$SUSFS_OK" = "true" ]; then
-              echo "" >> $DEFCONFIG
-              echo "# SUSFS" >> $DEFCONFIG
-              for cfg in \
-                CONFIG_KSU_SUSFS \
-                CONFIG_SUSFS \
-                CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT \
-                CONFIG_KSU_SUSFS_SUS_MOUNT \
-                CONFIG_KSU_SUSFS_SUS_MAP \
-                CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT \
-                CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT \
-                CONFIG_KSU_SUSFS_SUS_KSTAT \
-                CONFIG_KSU_SUSFS_TRY_UMOUNT \
-                CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT \
-                CONFIG_KSU_SUSFS_SPOOF_UNAME \
-                CONFIG_KSU_SUSFS_ENABLE_LOG \
-                CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
-                CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
-                CONFIG_KSU_SUSFS_OPEN_REDIRECT; do
-                add_cfg "${cfg}=y"
-              done
-              # Enable SUS_PATH for all versions as it is stable now
-              add_cfg "CONFIG_KSU_SUSFS_SUS_PATH=y"
-              add_cfg "CONFIG_KSU_SUSFS_SUS_SU=n"
-              echo "✅ SUSFS configs written to defconfig"
+          if [ "$SUSFS_OK" = "true" ]; then
+            echo "" >> $DEFCONFIG
+            echo "# SUSFS" >> $DEFCONFIG
+            for cfg in \
+              CONFIG_KSU_SUSFS \
+              CONFIG_SUSFS \
+              CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT \
+              CONFIG_KSU_SUSFS_SUS_MOUNT \
+              CONFIG_KSU_SUSFS_SUS_MAP \
+              CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT \
+              CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT \
+              CONFIG_KSU_SUSFS_SUS_KSTAT \
+              CONFIG_KSU_SUSFS_TRY_UMOUNT \
+              CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT \
+              CONFIG_KSU_SUSFS_SPOOF_UNAME \
+              CONFIG_KSU_SUSFS_ENABLE_LOG \
+              CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
+              CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+              CONFIG_KSU_SUSFS_OPEN_REDIRECT; do
+              add_cfg "${cfg}=y"
+            done
+            add_cfg "CONFIG_KSU_SUSFS_SUS_PATH=y"
+            add_cfg "CONFIG_KSU_SUSFS_SUS_SU=n"
+            echo "✅ SUSFS configs written to defconfig"
 
-              # Validate CONFIG_KSU is set to y since SUSFS requires KSU
-              if ! grep -q "CONFIG_KSU=y" "$DEFCONFIG"; then
-                {
-                  echo "❌ ERROR: SUSFS is enabled but CONFIG_KSU is not set to 'y' in defconfig!"
-                  echo "📋 Details: SUSFS requires KernelSU to be enabled to function."
-                  echo "🔧 Suggested fix: Ensure CONFIG_KSU=y is present in gki_defconfig."
-                } > "$GITHUB_WORKSPACE/kernel/build.log"
-                exit 1
-              fi
-            else
+            if ! grep -q "CONFIG_KSU=y" "$DEFCONFIG"; then
               {
-                echo "❌ ERROR: SUSFS integration failed!"
-                echo "📋 Details: SUSFS_OK flag is false."
-                echo "🔧 Suggested fix: Check Setup SUSFS logs for detailed errors."
+                echo "❌ ERROR: SUSFS is enabled but CONFIG_KSU is not set to 'y' in defconfig!"
+                echo "📋 Details: SUSFS requires KernelSU to be enabled to function."
+                echo "🔧 Suggested fix: Ensure CONFIG_KSU=y is present in gki_defconfig."
               } > "$GITHUB_WORKSPACE/kernel/build.log"
               exit 1
             fi
+          else
+            {
+              echo "❌ ERROR: SUSFS integration failed!"
+              echo "📋 Details: SUSFS_OK flag is false."
+              echo "🔧 Suggested fix: Check Setup SUSFS logs for detailed errors."
+            } > "$GITHUB_WORKSPACE/kernel/build.log"
+            exit 1
           fi
 
           echo "" >> "$DEFCONFIG"
@@ -681,61 +651,7 @@ jobs:
           fi
           echo "Konfigurasi Kernel,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
 
-      - name: Build Kernel (Bazel)
-        if: inputs.clang_toolchain == 'bazel-default' || inputs.clang_toolchain == ''
-        run: |
-          set -euo pipefail
-          START_TIME=$(date +%s)
-          cd kernel
-          mkdir -p $GITHUB_WORKSPACE/dist
-
-          # KONFIGURASI BAZEL & KESTABILAN:
-          # 1. Gunakan flag --local_resources=memory=6144. Flag --local_ram_resources sudah deprecated pada versi Bazel di Kleaf GKI 6.6 ini.
-          # 2. Setel --lto=thin untuk mengaktifkan Link-Time Optimization (ThinLTO) yang terbukti stabil di GKI 6.6 dengan RAM 6GB.
-          # 3. Lakukan pengulangan kompilasi sampai 3 kali jika terjadi kegagalan akibat kendala jaringan saat mengunduh dependensi remote.
-          BUILD_OK=false
-          for attempt in 1 2 3; do
-            echo "Bazel build attempt $attempt/3..."
-            if tools/bazel run \
-              --disk_cache=/home/runner/.cache/bazel \
-              --lto=thin \
-              --local_resources=memory=6144 \
-              --jobs=2 \
-              --noshow_progress \
-              --noshow_loading_progress \
-              //common:kernel_aarch64_dist -- --dist_dir=$GITHUB_WORKSPACE/dist 2>&1 | tee build.log; then
-              BUILD_OK=true
-              break
-            fi
-            echo "⚠️ Bazel build failed, retrying in 30s..."
-            sleep 30
-          done
-          if [ "$BUILD_OK" != "true" ]; then
-            echo "❌ Bazel build gagal setelah 3 percobaan"
-            exit 1
-          fi
-
-          # Jika TOOLCHAIN_VER belum diset (misal pada default bazel-default), hitung versinya secara dinamis
-          if [ -z "${TOOLCHAIN_VER:-}" ]; then
-            AOSP_CLANG_DIR=$(find bazel-bin/ -type d -name "clang-*" | head -n 1 || find prebuilts/clang/host/linux-x86/ -maxdepth 1 -type d -name "clang-r*" | head -n 1 || echo "")
-            if [ -n "$AOSP_CLANG_DIR" ] && [ -f "$AOSP_CLANG_DIR/bin/clang" ]; then
-              CLANG_VER=$($AOSP_CLANG_DIR/bin/clang --version | head -n1 | sed 's/ (http.*//g' | awk '{$1=$1};1')
-              echo "TOOLCHAIN_VER=$CLANG_VER" >> $GITHUB_ENV
-            else
-              echo "TOOLCHAIN_VER=AOSP Clang (Kleaf Default)" >> $GITHUB_ENV
-            fi
-          fi
-
-          # Jika default, setel TOOLCHAIN_NAME ke Bazel
-          if [ "${{ inputs.clang_toolchain }}" = "bazel-default" ] || [ -z "${{ inputs.clang_toolchain }}" ]; then
-            echo "TOOLCHAIN_NAME=Bazel" >> $GITHUB_ENV
-          fi
-          echo "Kompilasi Kernel (Bazel),$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
-        env:
-          SOURCE_DATE_EPOCH: "0"
-
-      - name: Build Kernel (Custom Toolchain)
-        if: inputs.clang_toolchain != 'bazel-default' && inputs.clang_toolchain != ''
+      - name: Build Kernel (ZyClang)
         run: |
           set -euo pipefail
           START_TIME=$(date +%s)
@@ -769,34 +685,21 @@ jobs:
           set -euo pipefail
           START_TIME=$(date +%s)
           mkdir -p $GITHUB_WORKSPACE/dist
-          if [ "${{ inputs.clang_toolchain }}" = "bazel-default" ] || [ -z "${{ inputs.clang_toolchain }}" ]; then
-            cd kernel
-            for artifact in Image Image.gz Image.lz4; do
-              if [ ! -f "$GITHUB_WORKSPACE/dist/$artifact" ]; then
-                if [ -f "bazel-bin/common/kernel_aarch64/$artifact" ]; then
-                  cp -v "bazel-bin/common/kernel_aarch64/$artifact" "$GITHUB_WORKSPACE/dist/" || true
-                fi
-              fi
-            done
-          else
-            # Proses ekstraksi hasil kompilasi dari folder 'out' compiler kustom
-            for img in \
-              kernel/common/out/arch/arm64/boot/Image \
-              kernel/common/out/arch/arm64/boot/Image.gz \
-              kernel/common/out/arch/arm64/boot/Image.lz4; do
-              if [ -f "$img" ]; then
-                cp -v "$img" "$GITHUB_WORKSPACE/dist/"
-              fi
-            done
-            # Ambil pula file driver modul WiFi (cfg80211.ko & mac80211.ko) untuk disertakan ke AnyKernel3
-            for mod in cfg80211.ko mac80211.ko; do
-              FOUND=$(find kernel/common/out -name "$mod" -type f 2>/dev/null | head -1)
-              if [ -n "$FOUND" ]; then
-                cp -v "$FOUND" "$GITHUB_WORKSPACE/dist/"
-                echo "✅ Extracted module: $mod"
-              fi
-            done
-          fi
+          for img in \
+            kernel/common/out/arch/arm64/boot/Image \
+            kernel/common/out/arch/arm64/boot/Image.gz \
+            kernel/common/out/arch/arm64/boot/Image.lz4; do
+            if [ -f "$img" ]; then
+              cp -v "$img" "$GITHUB_WORKSPACE/dist/"
+            fi
+          done
+          for mod in cfg80211.ko mac80211.ko; do
+            FOUND=$(find kernel/common/out -name "$mod" -type f 2>/dev/null | head -1)
+            if [ -n "$FOUND" ]; then
+              cp -v "$FOUND" "$GITHUB_WORKSPACE/dist/"
+              echo "✅ Extracted module: $mod"
+            fi
+          done
           echo "📦 dist/ contents:"
           ls -lah $GITHUB_WORKSPACE/dist/ || true
           echo "Ekstraksi Output Build,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
@@ -875,12 +778,7 @@ jobs:
 
           cd ak3
 
-          # Tentukan format penamaan kernel yang akan muncul pada menu aplikasi Kernel Manager di ponsel
-          if [ "${{ inputs.with_susfs }}" == "true" ]; then
-            KERNEL_STRING="Epitaph-${CUSTOM_NAME}-v${BUILD_VER} [GKI 6.6 | SUSFS | ${GOVERNOR} | ${TOOLCHAIN_SHORT}] by ${AUTHOR}"
-          else
-            KERNEL_STRING="Epitaph-${CUSTOM_NAME}-v${BUILD_VER} [GKI 6.6 | ${GOVERNOR} | ${TOOLCHAIN_SHORT}] by ${AUTHOR}"
-          fi
+          KERNEL_STRING="Epitaph-${CUSTOM_NAME}-v${BUILD_VER} [GKI 6.6 | SUSFS | ${GOVERNOR} | ${TOOLCHAIN_SHORT}] by ${AUTHOR}"
 
           printf '%s\n' \
             '# AnyKernel3 Ramdisk Mod Script' \
@@ -1013,8 +911,7 @@ jobs:
           fi
           echo "RESCUE_VER=${RESCUE_TAG}" >> $GITHUB_ENV
 
-      - name: Upload Artifacts (Bazel Release)
-        if: inputs.clang_toolchain == 'bazel-default' || inputs.clang_toolchain == ''
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: "${{ env.ZIP_NAME }}"
@@ -1022,17 +919,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload Artifacts (Experimental Toolchains)
-        if: inputs.clang_toolchain != 'bazel-default' && inputs.clang_toolchain != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: "epitaph-${{ inputs.clang_toolchain }}-experimental-${{ github.sha }}"
-          path: dist/*.zip
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Create Release
-        if: (inputs.clang_toolchain == 'bazel-default' || inputs.clang_toolchain == '') && success()
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "${{ inputs.release_tag }}"
@@ -1064,7 +952,7 @@ jobs:
 
       # ─── TELEGRAM: Upload zip ke channel update (per-build) ──────────
       - name: Send to Telegram (Success)
-        if: (inputs.clang_toolchain == 'bazel-default' || inputs.clang_toolchain == '') && success()
+        if: success()
         continue-on-error: true
         env:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -1077,8 +965,7 @@ jobs:
           
           ZIP_BYTES=$(du -b "$ZIP_FILE" | cut -f1 || echo "0")
           ZIP_SIZE=$(du -h "$ZIP_FILE" | cut -f1 || echo "?")
-          SUSFS_LABEL="No"
-          [ "${{ inputs.with_susfs }}" = "true" ] && SUSFS_LABEL="Yes"
+          SUSFS_LABEL="Yes"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
           CAPTION=$(printf '👑 <b>Epitaph Kernel %s — Build Success!</b>\n━━━━━━━━━━━━━━━━━━━━━\n🚀 <b>GKI 6.6 Kernel for Redmi 12 (fire)</b>\nRunning Android 15 HyperOS 2.0\n\n📊 <b>System Metrics:</b>\n• <b>Root Method:</b> %s v%s\n• <b>Kernel KMI:</b> android15-%s\n• <b>SUSFS Status:</b> %s\n• <b>Compiler Info:</b> %s\n• <b>Package Size:</b> %s\n• <b>Timestamp:</b> %s (run #%s)\n\n📝 <b>Changelog:</b>\n%s\n━━━━━━━━━━━━━━━━━━━━━\n📦 <b>GitHub Release & Download:</b>\n%s\n\n🔧 <b>Emergency Rescue & Diagnostics:</b>\n<a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
             "${{ inputs.release_tag }}" "${{ inputs.ksu_method }}" "${{ env.KSU_VERSION }}" "${{ env.KMI_GENERATION }}" "$SUSFS_LABEL" \
@@ -1109,8 +996,7 @@ jobs:
           [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
           ACTIONS_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          SUSFS_LABEL="No"
-          [ "${{ inputs.with_susfs }}" = "true" ] && SUSFS_LABEL="Yes"
+          SUSFS_LABEL="Yes"
 
           ERROR_LOG="/tmp/epitaph_error.log"
           : > "$ERROR_LOG"
@@ -1160,9 +1046,9 @@ jobs:
           {
             echo "## 🛠️ Epitaph Kernel Build Summary"
             echo "- **Status:** $STATUS"
-            echo "- **Toolchain:** \`${{ inputs.clang_toolchain || 'bazel-default' }}\`"
+            echo "- **Toolchain:** \`ZyClang\`"
             echo "- **Metode Root:** \`${{ inputs.ksu_method }}\` v${{ env.KSU_VERSION || 'unknown' }}"
-            echo "- **Integrasi SUSFS:** \`${{ inputs.with_susfs == 'true' && 'Ya (Integrated)' || 'Tidak (None)' }}\`"
+            echo "- **Integrasi SUSFS:** \`Ya (Integrated)\`"
             echo "- **Pemicu Build:** \`${{ github.actor }}\` via \`${{ github.event_name }}\`"
             echo "- **Tautan Alur Kerja:** [Klik di Sini](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
             echo ""

@@ -83,8 +83,7 @@ Trigger: workflow_dispatch (manual)
 
 | Toolchain | Build System | Status | Notes |
 |---|---|---|---|---|
-| `bazel-default` | Bazel/Kleaf | ✅ **Production** | The only officially production-tested system |
-| `zyc-latest` | make | ✅ **Supported** | ZyClang toolchain |
+| `zyc-latest` | make | ✅ **Production** | ZyClang — the only supported toolchain |
 
 ---
 
@@ -239,8 +238,7 @@ adb shell "su -c cat /sys/fs/pstore/dmesg-ramoops-0" > last_kmsg.txt
 ```
 GitHub Actions → 🎛️ GKI Control Center → Run workflow
 - release_tag: v1.x
-- susfs_variant: no-susfs | susfs | both
-- toolchain: bazel-default | all
+- toolchain: zyc-latest (only supported)
 ```
 
 ### Output File ZIP Name

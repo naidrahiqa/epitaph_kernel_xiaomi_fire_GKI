@@ -8,28 +8,6 @@ on:
         required: true
         default: "v1.0"
 
-      # Pilihan varian SUSFS
-      susfs_variant:
-        description: "🛡️ SUSFS Variant"
-        required: true
-        type: choice
-        default: "no-susfs"
-        options:
-          - "no-susfs"
-          - "susfs"
-          - "both"
-
-      # Pilihan compiler (toolchain) yang didukung untuk kompilasi
-      toolchain:
-        description: "🛠️ Toolchain"
-        required: true
-        type: choice
-        default: "bazel-default"
-        options:
-          - "bazel-default"
-          - "zyc-latest"
-          - "all"
-
 permissions:
   actions: write
   contents: write
@@ -55,68 +33,11 @@ jobs:
             exit 1
           fi
           echo "✅ release_tag validated: $TAG"
-      - name: Build Matrix
-        id: matrix
-        shell: python
-        run: |
-          import json
-          import os
-          import sys
-
-          # Saat ini metode root kita batasi secara ketat hanya ke KernelSU-Next demi stabilitas
-          roots = ["kernelsu-next"]
-
-          # Governor CPU default kita kunci di schedutil karena paling stabil untuk penggunaan harian
-          gov = "schedutil"
-
-          # Kumpulkan varian SUSFS berdasarkan choice dropdown yang dipilih oleh user
-          selected_susfs = "${{ inputs.susfs_variant }}"
-          variants = []
-          if selected_susfs == "both":
-              variants = ["false", "true"]
-          elif selected_susfs == "susfs":
-              variants = ["true"]
-          else:
-              variants = ["false"]
-
-          # Kumpulkan compiler (toolchain) berdasarkan choice dropdown yang dipilih oleh user
-          selected_tc = "${{ inputs.toolchain }}"
-          if selected_tc == "all":
-              toolchains = ["bazel-default", "zyc-latest"]
-          else:
-              toolchains = [selected_tc]
-
-          if not variants:
-              print("::error::No SUSFS variant selected!")
-              sys.exit(1)
-          if not toolchains:
-              print("::error::No Toolchain selected!")
-              sys.exit(1)
-
-          include = []
-          for susfs in variants:
-              for root in roots:
-                  for tc in toolchains:
-                      include.append({
-                          "susfs": susfs,
-                          "ksu_method": root,
-                          "clang_toolchain": tc,
-                      })
-
-          matrix_json = json.dumps({"include": include})
-
-          # Kirim hasil matrix dan jumlah total build ke variabel output GitHub Actions
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f'matrix={matrix_json}\n')
-              f.write(f'total={len(include)}\n')
-
       - name: "📊 Show Build Plan"
         run: |
-          echo "## 🎛️ GKI Build Plan" >> "$GITHUB_STEP_SUMMARY"
-          echo "Total builds: **${{ steps.matrix.outputs.total }}**" >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          echo '${{ steps.matrix.outputs.matrix }}' | jq '.' >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "## 🎛️ Epitaph Kernel Build" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Release Tag:** \`${{ inputs.release_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Configuration:** SUSFS + ZyClang (single build)" >> "$GITHUB_STEP_SUMMARY"
 
   notify_start:
     name: "🚀 Notify Telegram (Starting)"
@@ -132,18 +53,11 @@ jobs:
             echo "❌ Telegram secrets not set. Skipping."
             exit 0
           fi
-          
-          VARIANTS=""
-          if [ "${{ inputs.susfs_variant }}" = "both" ]; then
-            VARIANTS="no-susfs & susfs"
-          else
-            VARIANTS="${{ inputs.susfs_variant }}"
-          fi
 
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           
-          MESSAGE=$(printf '<b>🚀 Epitaph Kernel — Build Starting</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>SUSFS Variant:</b> %s\n<b>Toolchain:</b> %s\n<b>Total Builds:</b> %s\n<b>Triggered by:</b> %s\n\n<a href="%s">🔍 Monitor Build Progress on GitHub Actions</a>' \
-            "${{ inputs.release_tag }}" "$VARIANTS" "${{ inputs.toolchain }}" "${{ needs.prepare.outputs.total }}" "${{ github.actor }}" "$RUN_URL")
+          MESSAGE=$(printf '<b>🚀 Epitaph Kernel — Build Starting</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> SUSFS + ZyClang\n<b>Triggered by:</b> %s\n\n<a href="%s">🔍 Monitor Build Progress on GitHub Actions</a>' \
+            "${{ inputs.release_tag }}" "${{ github.actor }}" "$RUN_URL")
           
           echo "Sending to Chat ID: ${TG_CHAT_ID}"
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
@@ -164,18 +78,14 @@ jobs:
 
   trigger:
     needs: [prepare, notify_start]
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
-      max-parallel: 4
     uses: ./.github/workflows/_build_kernel_core.yml
     secrets: inherit
     with:
-      with_susfs: ${{ matrix.susfs }}
+      with_susfs: 'true'
       custom_name: "Epitaph"
       author_name: "Naidrahiqa"
-      ksu_method: ${{ matrix.ksu_method }}
-      clang_toolchain: ${{ matrix.clang_toolchain }}
+      ksu_method: "kernelsu-next"
+      clang_toolchain: "zyc-latest"
       release_tag: "${{ inputs.release_tag }}"
 
   summary:
@@ -186,24 +96,19 @@ jobs:
     steps:
       - name: Write Summary
         run: |
-          echo "## 🎛️ GKI Control Center — Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "## 🎛️ Epitaph Kernel — Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Setting | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Release Tag** | \`${{ inputs.release_tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Custom Name** | \`Epitaph\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Author** | \`Naidrahiqa\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Root** | \`KernelSU-Next\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **SUSFS Variant** | \`${{ inputs.susfs_variant }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Toolchain** | \`${{ inputs.toolchain }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Total Builds** | \`${{ needs.prepare.outputs.total }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Configuration** | \`SUSFS + ZyClang\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
           RESULT="${{ needs.trigger.result }}"
           if [ "$RESULT" = "success" ]; then
-            echo "✅ All builds completed successfully." >> "$GITHUB_STEP_SUMMARY"
+            echo "✅ Build completed successfully." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ Some builds failed or were cancelled." >> "$GITHUB_STEP_SUMMARY"
+            echo "❌ Build failed or was cancelled." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Send Finished Message to Telegram
@@ -218,21 +123,19 @@ jobs:
           RESULT="${{ needs.trigger.result }}"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
-          VARIANTS=""
-          [ "${{ inputs.susfs_variant }}" = "both" ] && VARIANTS="no-susfs & susfs" || VARIANTS="${{ inputs.susfs_variant }}"
 
           if [ "$RESULT" = "success" ]; then
             # Sukses → kirim ke channel update
             [ -z "$TG_CHAT_ID" ] && exit 0
-            MESSAGE=$(printf '<b>👑 Epitaph Kernel — Build Finished Successfully</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>SUSFS Variant:</b> %s\n<b>Toolchain:</b> %s\n<b>Status:</b> ✅ SUCCESS\n\nAll kernel builds completed successfully!\n\n📦 <a href="%s">GitHub Release</a>\n🔍 <a href="%s">Actions Run Log</a>' \
-              "${{ inputs.release_tag }}" "$VARIANTS" "${{ inputs.toolchain }}" "$RELEASE_URL" "$RUN_URL")
+            MESSAGE=$(printf '<b>👑 Epitaph Kernel — Build Finished Successfully</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> SUSFS + ZyClang\n<b>Status:</b> ✅ SUCCESS\n\n📦 <a href="%s">GitHub Release</a>\n🔍 <a href="%s">Actions Run Log</a>' \
+              "${{ inputs.release_tag }}" "$RELEASE_URL" "$RUN_URL")
             curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${MESSAGE}" --form-string "parse_mode=HTML"
           else
             # Gagal → kirim ke channel error dump
             [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
-            MESSAGE=$(printf '<b>❌ Epitaph Kernel — Build Failed / Completed with Errors</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>SUSFS Variant:</b> %s\n<b>Toolchain:</b> %s\n<b>Status:</b> ❌ FAILED\n\nSome of the matrix builds failed or were cancelled. Check error logs di channel error dump.\n\n🔍 <a href="%s">Actions Run Log</a>' \
-              "${{ inputs.release_tag }}" "$VARIANTS" "${{ inputs.toolchain }}" "$RUN_URL")
+            MESSAGE=$(printf '<b>❌ Epitaph Kernel — Build Failed</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> SUSFS + ZyClang\n<b>Status:</b> ❌ FAILED\n\n🔍 <a href="%s">Actions Run Log</a>' \
+              "${{ inputs.release_tag }}" "$RUN_URL")
             curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --form-string "chat_id=${TG_ERROR_CHAT_ID}" --form-string "text=${MESSAGE}" --form-string "parse_mode=HTML"
           fi

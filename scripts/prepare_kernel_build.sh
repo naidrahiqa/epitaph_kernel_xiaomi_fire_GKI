@@ -12,7 +12,7 @@
 #   $3 = KERNEL_VERSION   e.g. "6.6"
 #   $4 = GITHUB_WORKSPACE path to workspace root
 #   $5 = GITHUB_ENV       path to GITHUB_ENV file
-#   $6 = CLANG_TOOLCHAIN  e.g. "bazel-default" or "zyc-latest" (core only, ignored by rescue)
+#   $6 = CLANG_TOOLCHAIN  "zyc-latest" (core only, ignored by rescue)
 #   $7 = KSU_METHOD       e.g. "kernelsu-next"
 #   $8 = WITH_SUSFS       "true" | "false" (core only, ignored by rescue)
 # ==============================================================================
@@ -24,7 +24,7 @@ ANDROID_VERSION="$2"
 KERNEL_VERSION="$3"
 GITHUB_WORKSPACE="$4"
 GITHUB_ENV="$5"
-CLANG_TOOLCHAIN="${6:-bazel-default}"
+CLANG_TOOLCHAIN="${6:-zyc-latest}"
 KSU_METHOD="${7:-kernelsu-next}"
 WITH_SUSFS="${8:-false}"
 # Fungsi pembantu untuk melakukan percobaan ulang (retry) dengan waktu tunggu eksponensial (backoff)
@@ -180,7 +180,7 @@ download_toolchain() {
       {
         echo "❌ ERROR: Toolchain tidak dikenal: $CLANG_TOOLCHAIN!"
         echo "📋 Detail: Clang toolchain '$CLANG_TOOLCHAIN' tidak didukung."
-          echo "🔧 Saran perbaikan: Pilih kompiler yang valid (bazel-default, zyc-latest)."
+          echo "🔧 Saran perbaikan: Pilih kompiler yang valid (zyc-latest)."
       } > "$GITHUB_WORKSPACE/kernel/build.log"
       exit 1
       ;;
