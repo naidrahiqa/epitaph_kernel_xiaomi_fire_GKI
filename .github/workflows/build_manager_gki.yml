@@ -140,7 +140,7 @@ jobs:
           RESULT="${{ needs.trigger.result }}"
           RELEASE_TAG="${{ needs.prepare.outputs.release_tag }}"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ RELEASE_TAG }}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${RELEASE_TAG}"
 
           if [ "$RESULT" = "success" ]; then
             # Sukses → kirim ke channel update
