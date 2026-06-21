@@ -728,10 +728,10 @@ jobs:
       - name: Generate Changelog
         run: |
           START_TIME=$(date +%s)
-          python3 workflow_scripts/generate_changelog.py
-          echo "GIT_CHANGELOG<<EOF" >> $GITHUB_ENV
+          python3 workflow_scripts/generate_changelog.py || echo "# Changelog generation failed" > changelog.md
+          echo "GIT_CHANGELOG<<GITEOF" >> $GITHUB_ENV
           cat changelog.md >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          echo "GITEOF" >> $GITHUB_ENV
           echo "Generate Changelog,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
 
       - name: Package AnyKernel3
