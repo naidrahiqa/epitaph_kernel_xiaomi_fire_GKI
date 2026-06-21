@@ -1,6 +1,12 @@
 name: "🎛️ GKI Control Center"
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'LICENSE'
+      - '.gitignore'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -19,24 +25,34 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       total: ${{ steps.matrix.outputs.total }}
+      release_tag: ${{ steps.tag.outputs.release_tag }}
     steps:
-      - name: Validate release_tag
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release_tag
+        id: tag
         shell: bash
         run: |
-          TAG="${{ inputs.release_tag }}"
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            TAG="${{ inputs.release_tag }}"
+          else
+            # Auto-generate from commit count for push triggers
+            TAG="v$(git rev-list --count HEAD)"
+          fi
           if [[ ! "$TAG" =~ ^v[0-9] ]]; then
-            echo "❌ ERROR: release_tag must start with 'v' followed by a number (e.g., v1.0, v2.3-beta)"
+            echo "❌ ERROR: release_tag must start with 'v' followed by a number"
             exit 1
           fi
-          if [[ "$TAG" =~ [[:space:]] ]]; then
-            echo "❌ ERROR: release_tag must not contain spaces!"
-            exit 1
-          fi
-          echo "✅ release_tag validated: $TAG"
+          echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "✅ release_tag: $TAG"
+
       - name: "📊 Show Build Plan"
         run: |
           echo "## 🎛️ Epitaph Kernel Build" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Release Tag:** \`${{ inputs.release_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Release Tag:** \`${{ steps.tag.outputs.release_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Configuration:** SUSFS + ZyClang (single build)" >> "$GITHUB_STEP_SUMMARY"
 
   notify_start:
@@ -54,10 +70,11 @@ jobs:
             exit 0
           fi
 
+          RELEASE_TAG="${{ needs.prepare.outputs.release_tag }}"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           
           MESSAGE=$(printf '<b>🚀 Epitaph Kernel — Build Starting</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> SUSFS + ZyClang\n<b>Triggered by:</b> %s\n\n<a href="%s">🔍 Monitor Build Progress on GitHub Actions</a>' \
-            "${{ inputs.release_tag }}" "${{ github.actor }}" "$RUN_URL")
+            "$RELEASE_TAG" "${{ github.actor }}" "$RUN_URL")
           
           echo "Sending to Chat ID: ${TG_CHAT_ID}"
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
@@ -86,7 +103,7 @@ jobs:
       author_name: "Naidrahiqa"
       ksu_method: "kernelsu-next"
       clang_toolchain: "zyc-latest"
-      release_tag: "${{ inputs.release_tag }}"
+      release_tag: "${{ needs.prepare.outputs.release_tag }}"
 
   summary:
     name: "📊 Summary & Notify"
@@ -100,7 +117,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Setting | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Release Tag** | \`${{ inputs.release_tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Release Tag** | \`${{ needs.prepare.outputs.release_tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Configuration** | \`SUSFS + ZyClang\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
@@ -121,21 +138,22 @@ jobs:
           [ -z "$TG_BOT_TOKEN" ] && exit 0
 
           RESULT="${{ needs.trigger.result }}"
+          RELEASE_TAG="${{ needs.prepare.outputs.release_tag }}"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ RELEASE_TAG }}"
 
           if [ "$RESULT" = "success" ]; then
             # Sukses → kirim ke channel update
             [ -z "$TG_CHAT_ID" ] && exit 0
             MESSAGE=$(printf '<b>👑 Epitaph Kernel — Build Finished Successfully</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> SUSFS + ZyClang\n<b>Status:</b> ✅ SUCCESS\n\n📦 <a href="%s">GitHub Release</a>\n🔍 <a href="%s">Actions Run Log</a>' \
-              "${{ inputs.release_tag }}" "$RELEASE_URL" "$RUN_URL")
+              "$RELEASE_TAG" "$RELEASE_URL" "$RUN_URL")
             curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${MESSAGE}" --form-string "parse_mode=HTML"
           else
             # Gagal → kirim ke channel error dump
             [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
             MESSAGE=$(printf '<b>❌ Epitaph Kernel — Build Failed</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> SUSFS + ZyClang\n<b>Status:</b> ❌ FAILED\n\n🔍 <a href="%s">Actions Run Log</a>' \
-              "${{ inputs.release_tag }}" "$RUN_URL")
+              "$RELEASE_TAG" "$RUN_URL")
             curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --form-string "chat_id=${TG_ERROR_CHAT_ID}" --form-string "text=${MESSAGE}" --form-string "parse_mode=HTML"
           fi

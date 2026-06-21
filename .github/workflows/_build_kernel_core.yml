@@ -985,7 +985,7 @@ jobs:
               --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${CAPTION}" --form-string "parse_mode=HTML"
           fi
 
-      # ─── TELEGRAM: Kirim error log ke channel error dump (per-build) ──
+      # ─── TELEGRAM: Kirim error dump ke channel error dump (inline, tanpa .log) ──
       - name: Send Error Log to Telegram
         if: failure()
         continue-on-error: true
@@ -996,42 +996,94 @@ jobs:
           [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
           ACTIONS_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          SUSFS_LABEL="Yes"
 
-          ERROR_LOG="/tmp/epitaph_error.log"
-          : > "$ERROR_LOG"
+          # ─── 1. Gabungkan semua error log ───
+          COMBINED_LOG="/tmp/combined_build.log"
+          : > "$COMBINED_LOG"
           for log in "kernel/build.log" "kernel/common/build.log"; do
-            if [ -f "$log" ]; then
-              echo "=== $(basename $log) ===" >> "$ERROR_LOG"
-              grep -iE "error:|fatal:|undefined reference|cannot find|failed|❌" "$log" | tail -60 >> "$ERROR_LOG" 2>/dev/null || true
-              echo "--- last 80 lines ---" >> "$ERROR_LOG"
-              tail -80 "$log" >> "$ERROR_LOG" 2>/dev/null || true
-            fi
+            [ -f "$log" ] && cat "$log" >> "$COMBINED_LOG"
           done
           REJ_FILES=$(find kernel/common -name "*.rej" 2>/dev/null | head -5)
           if [ -n "$REJ_FILES" ]; then
-            echo "=== REJECTED PATCHES ===" >> "$ERROR_LOG"
-            for rej in $REJ_FILES; do echo "--- $rej ---" >> "$ERROR_LOG"; cat "$rej" >> "$ERROR_LOG"; done
+            echo "=== REJECTED PATCHES ===" >> "$COMBINED_LOG"
+            for rej in $REJ_FILES; do echo "--- $rej ---" >> "$COMBINED_LOG"; cat "$rej" >> "$COMBINED_LOG"; done
           fi
-          [ ! -s "$ERROR_LOG" ] && printf "No build.log found.\nCheck: %s\n" "$ACTIONS_URL" > "$ERROR_LOG"
 
-          HEADER=$(printf '<b>❌ Epitaph Kernel — Build FAILED</b>\n\n<b>Kernel:</b> %s\n<b>Version:</b> v%s\n<b>Developer:</b> ${{ inputs.author_name }}\n<b>Root:</b> ${{ inputs.ksu_method }}\n<b>SUSFS:</b> %s\n<b>Toolchain:</b> ${{ inputs.clang_toolchain }}\n<b>Triggered by:</b> ${{ github.actor }}\n\n<a href="%s">🔍 Full log</a>' \
-            "${{ env.ZIP_NAME }}" "${{ github.run_number }}" "$SUSFS_LABEL" "$ACTIONS_URL")
-          curl -s -X POST "${TG_API}/sendMessage" \
-            --form-string "chat_id=${TG_ERROR_CHAT_ID}" --form-string "text=${HEADER}" --form-string "parse_mode=HTML"
+          # ─── 2. Deteksi jenis error ───
+          ERROR_TYPE="UNKNOWN ERROR"
+          if grep -qiE "undefined reference|undefined symbol" "$COMBINED_LOG" 2>/dev/null; then
+            ERROR_TYPE="LINKER ERROR (undefined symbol)"
+          elif grep -qiE "error:.*\.c:[0-9]+:[0-9]+:" "$COMBINED_LOG" 2>/dev/null; then
+            ERROR_TYPE="MAKE ERROR"
+          elif grep -qiE "fatal error:.*\.h.*not found" "$COMBINED_LOG" 2>/dev/null; then
+            ERROR_TYPE="MISSING HEADER"
+          elif grep -qiE "patch.*does not apply|patch failed|git apply.*failed" "$COMBINED_LOG" 2>/dev/null; then
+            ERROR_TYPE="PATCH ERROR"
+          elif grep -qiE "no rule to make target|missing separator" "$COMBINED_LOG" 2>/dev/null; then
+            ERROR_TYPE="MAKEFILE ERROR"
+          elif grep -qiE "cannot find.*\.ko|module.*not found" "$COMBINED_LOG" 2>/dev/null; then
+            ERROR_TYPE="MODULE ERROR"
+          elif grep -qiE "Kconfig|syntax error|unexpected" "$COMBINED_LOG" 2>/dev/null; then
+            ERROR_TYPE="CONFIG ERROR"
+          fi
 
-          LOG_FILENAME="${{ env.ZIP_NAME }}-Error.log"
-          cp "$ERROR_LOG" "/tmp/${LOG_FILENAME}"
-          HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TG_API}/sendDocument" \
+          # ─── 3. Deteksi step mana yang gagal ───
+          FAILED_STEP="Build kernel (make error)"
+          if grep -qE "prepare_kernel_build|clone.*failed|git clone" "$COMBINED_LOG" 2>/dev/null \
+             && grep -qiE "error|failed" "$COMBINED_LOG" 2>/dev/null; then
+            FAILED_STEP="Prepare kernel build (clone/patch error)"
+          elif grep -qiE "SUSFS.*patch|susfs.*error" "$COMBINED_LOG" 2>/dev/null; then
+            FAILED_STEP="Setup SUSFS (patch error)"
+          elif grep -qiE "defconfig|CONFIG_" "$COMBINED_LOG" 2>/dev/null \
+               && grep -qiE "error" "$COMBINED_LOG" 2>/dev/null; then
+            FAILED_STEP="Configure kernel (config error)"
+          fi
+
+          # ─── 4. Ekstraksi error context yang clean (max 60 baris, skip noise) ───
+          ERROR_CONTEXT=$(grep -iE "error:|fatal:|undefined reference|undefined symbol|warning:|note:" "$COMBINED_LOG" 2>/dev/null \
+            | grep -v "^$" \
+            | grep -vE "^make\[|^make:" \
+            | grep -vE "^  (LD|CC|AR|OBJCOPY|LD \[M\])" \
+            | tail -40 \
+            | head -c 3000)
+
+          # Kalau grep gagal, ambil 30 baris terakhir yang mengandung error
+          if [ -z "$ERROR_CONTEXT" ]; then
+            ERROR_CONTEXT=$(tail -50 "$COMBINED_LOG" 2>/dev/null | grep -iE "error|fatal|failed" | tail -30 | head -c 3000)
+          fi
+
+          # Kalau masih kosong, ambil 30 baris terakhir
+          if [ -z "$ERROR_CONTEXT" ]; then
+            ERROR_CONTEXT=$(tail -30 "$COMBINED_LOG" 2>/dev/null | head -c 3000)
+          fi
+
+          # ─── 5. Escape HTML special chars ───
+          ERROR_CONTEXT=$(echo "$ERROR_CONTEXT" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+
+          # ─── 6. Susun pesan format Pollux ───
+          HEADER=$(printf '❌ <b>Epitaph Kernel — Build Failed</b>\n━━━━━━━━━━━━━━━━━━━━━\n📱 <b>Device:</b> Redmi 12 (fire) / MT6768\n🌐 <b>Tag:</b> %s\n⚠️ <b>Error:</b> %s\n📍 <b>Step:</b> %s\n━━━━━━━━━━━━━━━━━━━━━\n\n<b>Error Context:</b>\n<pre>%s</pre>\n━━━━━━━━━━━━━━━━━━━━━\n🔗 <a href="%s">🔍 Full Log on GitHub Actions</a>' \
+            "${{ env.ZIP_NAME }}" "$ERROR_TYPE" "$FAILED_STEP" "$ERROR_CONTEXT" "$ACTIONS_URL")
+
+          # ─── 7. Kirim pesan (max 4096 chars Telegram limit) ───
+          MSG_LEN=${#HEADER}
+          if [ "$MSG_LEN" -gt 4000 ]; then
+            # Truncate error context kalau kepanjangan
+            TRIMMED_LEN=$((4000 - ${#HEADER} + ${#ERROR_CONTEXT}))
+            ERROR_CONTEXT=$(echo "$ERROR_CONTEXT" | head -c "$TRIMMED_LEN")
+            HEADER=$(printf '❌ <b>Epitaph Kernel — Build Failed</b>\n━━━━━━━━━━━━━━━━━━━━━\n📱 <b>Device:</b> Redmi 12 (fire) / MT6768\n🌐 <b>Tag:</b> %s\n⚠️ <b>Error:</b> %s\n📍 <b>Step:</b> %s\n━━━━━━━━━━━━━━━━━━━━━\n\n<b>Error Context:</b>\n<pre>%s</pre>\n━━━━━━━━━━━━━━━━━━━━━\n🔗 <a href="%s">🔍 Full Log on GitHub Actions</a>' \
+              "${{ env.ZIP_NAME }}" "$ERROR_TYPE" "$FAILED_STEP" "$ERROR_CONTEXT" "$ACTIONS_URL")
+          fi
+
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "${TG_API}/sendMessage" \
             --form-string "chat_id=${TG_ERROR_CHAT_ID}" \
-            -F "document=@/tmp/${LOG_FILENAME};filename=${LOG_FILENAME}" \
-            --form-string "caption=📋 Error log — ${{ env.ZIP_NAME }}" --form-string "parse_mode=HTML" || echo "000")
-          if [ "$HTTP" != "200" ]; then
-            SNIPPET=$(tail -30 "$ERROR_LOG" | head -c 3500)
-            curl -s -X POST "${TG_API}/sendMessage" \
-              --form-string "chat_id=${TG_ERROR_CHAT_ID}" \
-              --form-string "text=$(printf '<b>📋 Error snippet:</b>\n<pre>%s</pre>' "$SNIPPET")" \
-              --form-string "parse_mode=HTML"
+            --form-string "text=${HEADER}" \
+            --form-string "parse_mode=HTML")
+
+          if echo "$RESPONSE" | grep -q "HTTP_STATUS:200"; then
+            echo "✅ Error dump sent to Telegram successfully"
+          else
+            echo "❌ Failed to send error dump, dumping to step output"
+            echo "$RESPONSE"
           fi
 
       - name: Post Build Summary Comment
