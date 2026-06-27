@@ -7,7 +7,6 @@ how to work with this repository effectively.
 
 Read these documents first:
 - [PRD.md](../../PRD.md) — Project requirements and architecture
-- [INSTRUCTIONS_FOR_AI.md](./INSTRUCTIONS_FOR_AI.md) — Absolute technical constraints
 - [NOTES.md](./NOTES.md) — Build history and known decisions
 
 ## Types of Contributions Welcome

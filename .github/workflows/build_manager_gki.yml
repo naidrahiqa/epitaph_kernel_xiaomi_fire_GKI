@@ -35,9 +35,11 @@ jobs:
       - name: Resolve release_tag
         id: tag
         shell: bash
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if [ -n "${{ inputs.release_tag }}" ]; then
-            TAG="${{ inputs.release_tag }}"
+          if [ -n "$INPUT_RELEASE_TAG" ]; then
+            TAG="$INPUT_RELEASE_TAG"
           else
             # Auto-generate from commit count for push triggers
             TAG="v$(git rev-list --count HEAD)"
@@ -61,20 +63,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Start Message to Telegram
+        continue-on-error: true
         env:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          ACTOR: ${{ github.actor }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
         run: |
           if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
             echo "❌ Telegram secrets not set. Skipping."
             exit 0
           fi
 
-          RELEASE_TAG="${{ needs.prepare.outputs.release_tag }}"
-          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
           
           MESSAGE=$(printf '<b>🚀 Epitaph Kernel — Build Starting</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> SUSFS + ZyClang\n<b>Triggered by:</b> %s\n\n<a href="%s">🔍 Monitor Build Progress on GitHub Actions</a>' \
-            "$RELEASE_TAG" "${{ github.actor }}" "$RUN_URL")
+            "$RELEASE_TAG" "$ACTOR" "$RUN_URL")
           
           echo "Sending to Chat ID: ${TG_CHAT_ID}"
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
@@ -112,17 +118,19 @@ jobs:
     if: always()
     steps:
       - name: Write Summary
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          TRIGGER_RESULT: ${{ needs.trigger.result }}
         run: |
           echo "## 🎛️ Epitaph Kernel — Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Setting | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Release Tag** | \`${{ needs.prepare.outputs.release_tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Release Tag** | \`$RELEASE_TAG\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Configuration** | \`SUSFS + ZyClang\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          RESULT="${{ needs.trigger.result }}"
-          if [ "$RESULT" = "success" ]; then
+          if [ "$TRIGGER_RESULT" = "success" ]; then
             echo "✅ Build completed successfully." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "❌ Build failed or was cancelled." >> "$GITHUB_STEP_SUMMARY"
@@ -134,15 +142,17 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TG_ERROR_CHAT_ID: ${{ secrets.TELEGRAM_ERROR_CHAT_ID }}
+          TRIGGER_RESULT: ${{ needs.trigger.result }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           [ -z "$TG_BOT_TOKEN" ] && exit 0
 
-          RESULT="${{ needs.trigger.result }}"
-          RELEASE_TAG="${{ needs.prepare.outputs.release_tag }}"
-          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${RELEASE_TAG}"
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+          RELEASE_URL="https://github.com/${REPO}/releases/tag/${RELEASE_TAG}"
 
-          if [ "$RESULT" = "success" ]; then
+          if [ "$TRIGGER_RESULT" = "success" ]; then
             # Sukses → kirim ke channel update
             [ -z "$TG_CHAT_ID" ] && exit 0
             MESSAGE=$(printf '<b>👑 Epitaph Kernel — Build Finished Successfully</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> SUSFS + ZyClang\n<b>Status:</b> ✅ SUCCESS\n\n📦 <a href="%s">GitHub Release</a>\n🔍 <a href="%s">Actions Run Log</a>' \

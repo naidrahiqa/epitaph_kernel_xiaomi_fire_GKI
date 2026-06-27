@@ -1,23 +1,31 @@
-boot.img
+# ─── Build Artifacts ──────────────────────────────
 *.img
 dist/
 out/
-kernel/
 ak3/
-runs.json
+kernel/
+
+# ─── Logs & Debug ─────────────────────────────────
+*.log
+log-error/
+tools/logs/
 gki_logs/
 legacy_logs/
-logs/
 gki_logs.zip
 legacy_logs.zip
-*.log
 error_gki.txt
 error_legacy.txt
+
+# ─── Working Files (not for repo) ─────────────────
+git_diff.txt
+open.md
 Nyimpenn_log/
 booting/
 log_tele/
 ekstrak_flashable/
+temp_*/
+runs.json
+
+# ─── Platform Tools (bundled, not tracked) ────────
 platform-tools/
 platform-tools.zip
-temp_*/
-open.md

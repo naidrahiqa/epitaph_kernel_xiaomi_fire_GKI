@@ -1,28 +1,27 @@
 import subprocess
-import sys
 import os
 from datetime import datetime
 
 def run_cmd(cmd):
-    """Run a shell command and return its trimmed output."""
+    """Run a shell command safely and return its trimmed output."""
     try:
-        return subprocess.check_output(cmd, shell=True, text=True).strip()
-    except subprocess.CalledProcessError:
+        return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return ""
 
 def main():
     # 1. Fetch previous git tag to determine commit range
-    prev_tag = run_cmd("git describe --tags --abbrev=0 HEAD^")
+    prev_tag = run_cmd(["git", "describe", "--tags", "--abbrev=0", "HEAD^"])
     if not prev_tag:
-        prev_tag = run_cmd("git describe --tags --abbrev=0")
+        prev_tag = run_cmd(["git", "describe", "--tags", "--abbrev=0"])
     
     # 2. Get commit list since the last tag (fallback to last 15 commits if tag is missing)
     git_range = f"{prev_tag}..HEAD" if prev_tag else "HEAD~15..HEAD"
     log_format = "%s (%h)"
-    commits_raw = run_cmd(f'git log --format="{log_format}" --no-merges {git_range}')
+    commits_raw = run_cmd(["git", "log", f"--format={log_format}", "--no-merges", git_range])
     
     if not commits_raw:
-        commits_raw = run_cmd(f'git log --format="{log_format}" --no-merges -n 15')
+        commits_raw = run_cmd(["git", "log", f"--format={log_format}", "--no-merges", "-n", "15"])
     
     commits = commits_raw.splitlines() if commits_raw else []
     

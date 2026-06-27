@@ -53,11 +53,15 @@ jobs:
         env:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ] && exit 0
-          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
           MSG=$(printf '<b>🚀 Epitaph Rescue Kernel — Build Starting</b>\n\n<b>Type:</b> Debug boot.img (Rescue)\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Toolchain:</b> Bazel (AOSP Clang)\n<b>Root:</b> KernelSU-Next\n<b>PStore:</b> ✅ Aktif\n<b>Triggered by:</b> %s\n<b>Build Date:</b> %s\n\n<a href="%s">🔍 Monitor Build Progress</a>' \
-            "${{ inputs.release_tag }}" "${{ github.actor }}" "${{ env.BUILD_TIME }}" "$RUN_URL")
+            "$INPUT_RELEASE_TAG" "$ACTOR" "${BUILD_TIME}" "$RUN_URL")
           curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
             --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${MSG}" --form-string "parse_mode=HTML"
 
@@ -144,14 +148,14 @@ jobs:
           BUILD_OK=false
           for attempt in 1 2 3; do
             echo "Bazel build attempt $attempt/3..."
-            # Jalankan build target kernel_aarch64 (utama) terlebih dahulu dengan --lto=none (aman untuk 7GB RAM runner)
+            # Jalankan build target kernel_aarch64 (utama) terlebih dahulu dengan --lto=thin (ThinLTO)
             # Jika kompilasi utama berhasil, dist target boleh gagal saat meng-copy modul yang di-disable.
-            if tools/bazel build --disk_cache=/home/runner/.cache/bazel --lto=none \
+            if tools/bazel build --disk_cache=/home/runner/.cache/bazel --lto=thin \
               --local_resources=memory=6144 --jobs=2 --noshow_progress --noshow_loading_progress \
               //common:kernel_aarch64 2>&1 | tee build.log; then
               
               # Coba jalankan target dist (tidak apa-apa jika exit code non-zero, karena modul.ko minim)
-              tools/bazel run --disk_cache=/home/runner/.cache/bazel --lto=none \
+              tools/bazel run --disk_cache=/home/runner/.cache/bazel --lto=thin \
                 --local_resources=memory=6144 --jobs=2 --noshow_progress --noshow_loading_progress \
                 //common:kernel_aarch64_dist -- --dist_dir=$GITHUB_WORKSPACE/dist || true
                 
@@ -306,6 +310,9 @@ jobs:
         env:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          REPO: ${{ github.repository }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ] && exit 0
           BOOT_FILE="dist/${RESCUE_NAME}-boot.img"
@@ -313,11 +320,11 @@ jobs:
           
           BOOT_SIZE=$(du -h "$BOOT_FILE" | cut -f1)
           BOOT_BYTES=$(du -b "$BOOT_FILE" | cut -f1)
-          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
+          RELEASE_URL="https://github.com/${REPO}/releases/tag/${INPUT_RELEASE_TAG}"
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
           CAPTION=$(printf '🔧 <b>Epitaph Rescue Kernel %s — Build Success!</b>\n━━━━━━━━━━━━━━━━━━━━━\n🚀 <b>Debug & Recovery boot.img for Redmi 12 (fire)</b>\nFlash via Fastboot if you bootloop\n\n📊 <b>System Metrics:</b>\n• <b>Type:</b> GKI 6.6 (Minimal)\n• <b>Root Method:</b> KernelSU-Next v%s\n• <b>PStore console-ramoops:</b> ✅ Enabled\n• <b>Package Size:</b> %s\n• <b>Timestamp:</b> %s (run #%s)\n\n🔧 <b>Purpose:</b> Extract crash logs from a bootlooping device safely.\n━━━━━━━━━━━━━━━━━━━━━\n📦 <b>GitHub Release & Download:</b>\n%s\n\n🔧 <b>Emergency Rescue & Diagnostics:</b>\n<a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
-            "${{ inputs.release_tag }}" "${{ env.KSU_VERSION }}" "$BOOT_SIZE" "${{ env.BUILD_TIME }}" "${{ github.run_number }}" \
-            "$RELEASE_URL" "${{ env.RESCUE_VER }}" "${{ env.RESCUE_VER }}")
+            "$INPUT_RELEASE_TAG" "${KSU_VERSION}" "$BOOT_SIZE" "${BUILD_TIME}" "$RUN_NUMBER" \
+            "$RELEASE_URL" "${RESCUE_VER}" "${RESCUE_VER}")
           TG_LIMIT=52428800
           if [ "$BOOT_BYTES" -le "$TG_LIMIT" ]; then
             HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TG_API}/sendDocument" \
@@ -337,10 +344,14 @@ jobs:
         env:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_ERROR_CHAT_ID: ${{ secrets.TELEGRAM_ERROR_CHAT_ID }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
-          ACTIONS_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ACTIONS_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
           
           ERROR_LOG="/tmp/epitaph_error.log"
           : > "$ERROR_LOG"
@@ -355,7 +366,7 @@ jobs:
           [ ! -s "$ERROR_LOG" ] && printf "No build.log found.\nCheck: %s\n" "$ACTIONS_URL" > "$ERROR_LOG"
 
           HEADER=$(printf '<b>❌ Epitaph Rescue Kernel — Build FAILED</b>\n\n<b>Kernel:</b> %s\n<b>Version:</b> v%s\n<b>Developer:</b> Naidrahiqa\n<b>Toolchain:</b> Bazel (AOSP Clang)\n<b>Root:</b> KernelSU-Next\n<b>Built:</b> %s\n<b>Triggered by:</b> %s\n\n<a href="%s">🔍 Full log on GitHub Actions</a>' \
-            "${RESCUE_NAME}" "${{ github.run_number }}" "${{ env.BUILD_TIME }}" "${{ github.actor }}" "$ACTIONS_URL")
+            "${RESCUE_NAME}" "$RUN_NUMBER" "${BUILD_TIME}" "$ACTOR" "$ACTIONS_URL")
           curl -s -X POST "${TG_API}/sendMessage" \
             --form-string "chat_id=${TG_ERROR_CHAT_ID}" --form-string "text=${HEADER}" --form-string "parse_mode=HTML"
 

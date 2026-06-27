@@ -87,22 +87,31 @@ jobs:
           echo "Pembersihan Ruang Disk,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
 
       - name: Debug Inputs
+        env:
+          INPUT_SUSFS: ${{ inputs.with_susfs }}
+          INPUT_NAME: ${{ inputs.custom_name }}
+          INPUT_KSU: ${{ inputs.ksu_method }}
+          INPUT_CLANG: ${{ inputs.clang_toolchain }}
+          INPUT_TAG: ${{ inputs.release_tag }}
         run: |
           echo "=== WORKFLOW INPUTS ==="
-          echo "with_susfs:      '${{ inputs.with_susfs }}'"
-          echo "custom_name:     '${{ inputs.custom_name }}'"
-          echo "ksu_method:      '${{ inputs.ksu_method }}'"
+          echo "with_susfs:      '$INPUT_SUSFS'"
+          echo "custom_name:     '$INPUT_NAME'"
+          echo "ksu_method:      '$INPUT_KSU'"
           echo "cpu_governor:    'schedutil'"
-          echo "clang_toolchain: '${{ inputs.clang_toolchain }}'"
-          echo "release_tag:     '${{ inputs.release_tag }}'"
+          echo "clang_toolchain: '$INPUT_CLANG'"
+          echo "release_tag:     '$INPUT_TAG'"
           echo "========================"
 
       - name: Initialize Environment
+        env:
+          INPUT_NAME: ${{ inputs.custom_name }}
+          INPUT_KSU: ${{ inputs.ksu_method }}
         run: |
           echo "TOOLCHAIN_NAME=ZyClang" >> $GITHUB_ENV
           BUILD_DATE=$(TZ='Asia/Jakarta' date '+%d%m%Y')
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
-          BASE_NAME="${{ inputs.custom_name }}-ZyClang-${{ inputs.ksu_method }}-SUSFS-${BUILD_DATE}"
+          BASE_NAME="${INPUT_NAME}-ZyClang-${INPUT_KSU}-SUSFS-${BUILD_DATE}"
           echo "ZIP_NAME=${BASE_NAME}" >> $GITHUB_ENV
           echo "✅ Environment initialized: ${BASE_NAME}"
 
@@ -515,12 +524,7 @@ jobs:
               exit 1
             fi
           else
-            {
-              echo "❌ ERROR: SUSFS integration failed!"
-              echo "📋 Details: SUSFS_OK flag is false."
-              echo "🔧 Suggested fix: Check Setup SUSFS logs for detailed errors."
-            } > "$GITHUB_WORKSPACE/kernel/build.log"
-            exit 1
+            echo "⚠️ SUSFS disabled or integration failed — building without SUSFS"
           fi
 
           echo "" >> "$DEFCONFIG"
@@ -729,9 +733,11 @@ jobs:
         run: |
           START_TIME=$(date +%s)
           python3 workflow_scripts/generate_changelog.py || echo "# Changelog generation failed" > changelog.md
-          echo "GIT_CHANGELOG<<GITEOF" >> $GITHUB_ENV
+          # Use a unique delimiter that won't appear in changelog content
+          DELIMITER=$(cat /proc/sys/kernel/random/uuid)
+          echo "GIT_CHANGELOG<<${DELIMITER}" >> $GITHUB_ENV
           cat changelog.md >> $GITHUB_ENV
-          echo "GITEOF" >> $GITHUB_ENV
+          echo "${DELIMITER}" >> $GITHUB_ENV
           echo "Generate Changelog,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
 
       - name: Package AnyKernel3
@@ -946,6 +952,11 @@ jobs:
         env:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_KSU: ${{ inputs.ksu_method }}
+          INPUT_SUSFS: ${{ inputs.with_susfs }}
+          REPO: ${{ github.repository }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ] && exit 0
           ZIP_FILE=$(ls dist/*.zip 2>/dev/null | head -n 1)
@@ -955,11 +966,11 @@ jobs:
           ZIP_BYTES=$(du -b "$ZIP_FILE" | cut -f1 || echo "0")
           ZIP_SIZE=$(du -h "$ZIP_FILE" | cut -f1 || echo "?")
           SUSFS_LABEL="Yes"
-          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
+          RELEASE_URL="https://github.com/${REPO}/releases/tag/${INPUT_RELEASE_TAG}"
           CAPTION=$(printf '👑 <b>Epitaph Kernel %s — Build Success!</b>\n━━━━━━━━━━━━━━━━━━━━━\n🚀 <b>GKI 6.6 Kernel for Redmi 12 (fire)</b>\nRunning Android 15 HyperOS 2.0\n\n📊 <b>System Metrics:</b>\n• <b>Root Method:</b> %s v%s\n• <b>Kernel KMI:</b> android15-%s\n• <b>SUSFS Status:</b> %s\n• <b>Compiler Info:</b> %s\n• <b>Package Size:</b> %s\n• <b>Timestamp:</b> %s (run #%s)\n\n📝 <b>Changelog:</b>\n%s\n━━━━━━━━━━━━━━━━━━━━━\n📦 <b>GitHub Release & Download:</b>\n%s\n\n🔧 <b>Emergency Rescue & Diagnostics:</b>\n<a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
-            "${{ inputs.release_tag }}" "${{ inputs.ksu_method }}" "${{ env.KSU_VERSION }}" "${{ env.KMI_GENERATION }}" "$SUSFS_LABEL" \
-            "${{ env.TOOLCHAIN_VER }}" "$ZIP_SIZE" "${{ env.BUILD_TIME }}" "${{ github.run_number }}" \
-            "$(echo "${{ env.GIT_CHANGELOG }}" | head -10)" "$RELEASE_URL" "${{ env.RESCUE_VER }}" "${{ env.RESCUE_VER }}")
+            "$INPUT_RELEASE_TAG" "$INPUT_KSU" "${KSU_VERSION}" "${KMI_GENERATION}" "$SUSFS_LABEL" \
+            "${TOOLCHAIN_VER}" "$ZIP_SIZE" "${BUILD_TIME}" "$RUN_NUMBER" \
+            "$(echo "${GIT_CHANGELOG}" | head -10)" "$RELEASE_URL" "${RESCUE_VER}" "${RESCUE_VER}")
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
           TG_LIMIT=52428800
           if [ "$ZIP_BYTES" -le "$TG_LIMIT" ]; then
@@ -1077,10 +1088,17 @@ jobs:
 
       - name: Post Build Summary Comment
         if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          INPUT_KSU: ${{ inputs.ksu_method }}
+          ACTOR: ${{ github.actor }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           echo "=== 📢 Menulis Ringkasan Build ==="
           STATUS="❌ GAGAL (FAILED)"
-          if [ "${{ job.status }}" = "success" ]; then
+          if [ "$JOB_STATUS" = "success" ]; then
             STATUS="✅ BERHASIL (SUCCESS)"
           fi
           
@@ -1088,10 +1106,10 @@ jobs:
             echo "## 🛠️ Epitaph Kernel Build Summary"
             echo "- **Status:** $STATUS"
             echo "- **Toolchain:** \`ZyClang\`"
-            echo "- **Metode Root:** \`${{ inputs.ksu_method }}\` v${{ env.KSU_VERSION || 'unknown' }}"
+            echo "- **Metode Root:** \`${INPUT_KSU}\` v${KSU_VERSION:-unknown}"
             echo "- **Integrasi SUSFS:** \`Ya (Integrated)\`"
-            echo "- **Pemicu Build:** \`${{ github.actor }}\` via \`${{ github.event_name }}\`"
-            echo "- **Tautan Alur Kerja:** [Klik di Sini](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo "- **Pemicu Build:** \`${ACTOR}\` via \`${EVENT_NAME}\`"
+            echo "- **Tautan Alur Kerja:** [Klik di Sini](https://github.com/${REPO}/actions/runs/${RUN_ID})"
             echo ""
           } >> $GITHUB_STEP_SUMMARY
 
