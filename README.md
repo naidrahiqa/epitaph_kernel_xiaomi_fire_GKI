@@ -91,9 +91,9 @@
 <br/>
 
 <!-- PROJECT STATUS BADGES -->
-[![Build Status](https://img.shields.io/github/actions/workflow/status/naidrahiqa/epitaph_kernel/build_manager_gki.yml?branch=main&style=for-the-badge&logo=github-actions&logoColor=white&color=emerald)](https://github.com/naidrahiqa/epitaph_kernel/actions)
-[![Latest Release](https://img.shields.io/github/v/release/naidrahiqa/epitaph_kernel?style=for-the-badge&logo=github&logoColor=white&color=3b82f6)](https://github.com/naidrahiqa/epitaph_kernel/releases)
-[![License](https://img.shields.io/github/license/naidrahiqa/epitaph_kernel?style=for-the-badge&logo=git&logoColor=white&color=64748b)](LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/naidrahiqa/epitaph_kernel_xiaomi_fire_GKI/build_manager_gki.yml?branch=main&style=for-the-badge&logo=github-actions&logoColor=white&color=emerald)](https://github.com/naidrahiqa/epitaph_kernel_xiaomi_fire_GKI/actions)
+[![Latest Release](https://img.shields.io/github/v/release/naidrahiqa/epitaph_kernel_xiaomi_fire_GKI?style=for-the-badge&logo=github&logoColor=white&color=3b82f6)](https://github.com/naidrahiqa/epitaph_kernel_xiaomi_fire_GKI/releases)
+[![License](https://img.shields.io/github/license/naidrahiqa/epitaph_kernel_xiaomi_fire_GKI?style=for-the-badge&logo=git&logoColor=white&color=64748b)](LICENSE)
 
 <br/>
 
