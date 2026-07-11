@@ -247,9 +247,13 @@ sync_kernel() {
   echo "📥 Menarik pembaruan LTS terbaru dari Linux Stable..."
   git remote add stable https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable.git 2>/dev/null || true
   
+  # Cari remote AOSP (biasanya bernama 'aosp' atau 'origin')
+  AOSP_REMOTE=$(git remote | grep -E "^(aosp|origin)$" | head -n1 || git remote | head -n1 || echo "aosp")
+  echo "  → Menggunakan remote AOSP: $AOSP_REMOTE"
+
   # Memperdalam riwayat AOSP agar dapat mendeteksi merge base (mengatasi batasan shallow clone)
   echo "  → Memperdalam riwayat AOSP..."
-  git fetch origin --depth=50 || true
+  git fetch "$AOSP_REMOTE" --deepen=100 2>/dev/null || true
   
   # Mengambil commit terbaru dari linux-6.6.y
   echo "  → Mengambil commit terbaru dari linux-6.6.y..."
@@ -260,8 +264,8 @@ sync_kernel() {
     if git merge FETCH_HEAD -m "ci: merge latest linux-6.6.y stable updates" --no-edit; then
       echo "  ✅ BERHASIL: Linux Stable LTS terbaru berhasil digabungkan!"
     else
-      echo "  ⚠️ GAGAL: Terjadi konflik saat menggabungkan Linux Stable. Menggunakan AOSP asli."
-      git merge --abort
+      echo "  ⚠️ GAGAL: Terjadi konflik atau batasan shallow clone saat menggabungkan Linux Stable. Menggunakan AOSP asli."
+      git merge --abort 2>/dev/null || true
     fi
   else
     echo "  ⚠️ GAGAL: Tidak dapat mengambil data dari linux-stable. Menggunakan AOSP asli."
