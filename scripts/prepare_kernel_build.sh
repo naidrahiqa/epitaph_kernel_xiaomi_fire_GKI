@@ -436,26 +436,29 @@ setup_nomount() {
   
   cd kernel/common
 
-  echo "📥 Cloning NoMount installer..."
-  if ! retry_cmd git clone --depth=1 https://github.com/xxblebleblexx/nomount-installer.git /tmp/nomount-installer; then
-    echo "⚠️ Failed to clone NoMount installer, skipping."
+  echo "📥 Cloning NoMount upstream repo..."
+  if ! retry_cmd git clone --depth=1 https://github.com/maxsteeel/nomount.git /tmp/nomount; then
+    echo "⚠️ Failed to clone NoMount repo, skipping."
     cd "$GITHUB_WORKSPACE"
     return 0
   fi
 
-  # Copy nomount.c and nomount.h to fs/
-  if [ -f "/tmp/nomount-installer/nomount.sh" ]; then
-    echo "🔧 Running NoMount installer for kernel $KERNEL_VERSION..."
-    cd /tmp/nomount-installer
-    bash nomount.sh "$KERNEL_VERSION" || echo "⚠️ NoMount installer failed (skipping)"
-    cd "$GITHUB_WORKSPACE/kernel/common"
-    
-    # Copy nomount source files if they exist
-    if [ -f "/tmp/nomount-installer/nomount.c" ]; then
-      cp /tmp/nomount-installer/nomount.c fs/ 2>/dev/null || true
-      cp /tmp/nomount-installer/nomount.h fs/ 2>/dev/null || true
-      echo "✅ NoMount source files copied"
+  # Copy source files into kernel tree
+  cp /tmp/nomount/kernel/src/nomount.c fs/
+  cp /tmp/nomount/kernel/src/nomount.h fs/
+  echo "✅ NoMount source files copied to fs/"
+
+  # Apply kernel version-specific patch (6.6)
+  PATCH_FILE="/tmp/nomount/kernel/patches/nomount_6.6_kernel_integration.patch"
+  if [ -f "$PATCH_FILE" ]; then
+    echo "🔧 Applying NoMount patch for kernel 6.6..."
+    cp "$PATCH_FILE" .
+    if patch -p1 --forward --no-backup-if-mismatch < nomount_6.6_kernel_integration.patch; then
+      echo "✅ NoMount patch applied successfully"
+    else
+      echo "⚠️ NoMount patch failed (may already be applied, skipping)"
     fi
+    rm -f nomount_6.6_kernel_integration.patch
   fi
 
   # Add CONFIG_NOMOUNT=y to defconfig
@@ -469,6 +472,7 @@ setup_nomount() {
   git -c user.email="ci@epitaph" -c user.name="Epitaph CI" \
     commit -m "ci: integrate NoMount file injection framework" --allow-empty
   
+  rm -rf /tmp/nomount
   echo "✅ NoMount integrated (kernel version: $KERNEL_VERSION)"
   cd "$GITHUB_WORKSPACE"
 }
