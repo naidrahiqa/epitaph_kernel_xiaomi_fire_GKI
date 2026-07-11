@@ -329,6 +329,7 @@ jobs:
           
           # Deteksi arsitektur target Clang demi jaminan kompatibilitas kompilasi silang
           CLANG_TRIPLE=$(clang -dumpmachine)
+          [ -z "$CLANG_TRIPLE" ] || [ "$CLANG_TRIPLE" = "unknown" ] && CLANG_TRIPLE="aarch64-linux-gnu"
           echo "✅ Using Clang Triple: $CLANG_TRIPLE"
 
           MAKE_ARGS="O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 \
