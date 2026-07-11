@@ -81,7 +81,7 @@
   <g transform="translate(560, 50)">
     <rect width="250" height="110" rx="8" fill="#ffffff" opacity="0.03" stroke="#334155" stroke-width="0.5"/>
     <text x="16" y="24" font-family="'Courier New', monospace" font-size="10" fill="#6366f1" letter-spacing="1">// SPECS</text>
-    <text x="16" y="44" font-family="'Courier New', monospace" font-size="10" fill="#94a3b8">ROOT    <tspan fill="#e2e8f0">KernelSU-Next</tspan></text>
+    <text x="16" y="44" font-family="'Courier New', monospace" font-size="10" fill="#94a3b8">ROOT    <tspan fill="#e2e8f0">xxKSU</tspan></text>
     <text x="16" y="60" font-family="'Courier New', monospace" font-size="10" fill="#94a3b8">GOV     <tspan fill="#e2e8f0">schedutil</tspan></text>
     <text x="16" y="76" font-family="'Courier New', monospace" font-size="10" fill="#94a3b8">TCP     <tspan fill="#e2e8f0">BBR + FQ</tspan></text>
     <text x="16" y="92" font-family="'Courier New', monospace" font-size="10" fill="#94a3b8">ZRAM    <tspan fill="#e2e8f0">ZSTD multi-stream</tspan></text>
@@ -102,8 +102,8 @@
 ![OS](https://img.shields.io/badge/OS-Android%2015%20(HyperOS%202.0)-3DDC84?style=for-the-badge&logo=android&logoColor=white)
 ![SoC](https://img.shields.io/badge/SoC-Helio%20G88%20(MT6769)-4F46E5?style=for-the-badge&logo=microchip&logoColor=white)
 ![Kernel](https://img.shields.io/badge/Kernel-GKI%206.6-0ea5e9?style=for-the-badge&logo=linux&logoColor=white)
-![Root](https://img.shields.io/badge/Root-KernelSU--Next-7C3AED?style=for-the-badge&logo=superuser&logoColor=white)
-![SUSFS](https://img.shields.io/badge/SUSFS-Supported-10B981?style=for-the-badge&logo=shield&logoColor=white)
+![Root](https://img.shields.io/badge/Root-xxKSU-7C3AED?style=for-the-badge&logo=superuser&logoColor=white)
+![Mount Mode](https://img.shields.io/badge/Mount%20Mode-No--Mount-10B981?style=for-the-badge&logo=shield&logoColor=white)
 
 </div>
 
@@ -118,8 +118,8 @@
 ## ✨ Core Features
 
 ### 🔐 Root & Stealth Recovery
-* **Built-in KernelSU-Next**: Access kernel-level root privileges natively. Secure, lightweight, and completely stealthy.
-* **SUSFS Support (Optional Build)**: Deep integration of the SUSFS kernel driver to safely hide root status from banking applications.
+* **Built-in xxKSU**: Access kernel-level root privileges natively. Secure, lightweight, and completely stealthy. Integrates with MultiSU Manager.
+* **No-Mount Support**: Bypasses root detection by avoiding module directory mounting in Userspace.
 * **Smart Vermagic & CRC Bypass**: Dynamically bypasses `vermagic` signature checks and CRC version checking (`check_version`) in the Android module loader. This allows stock Xiaomi ROM WiFi/Bluetooth vendor drivers to load flawlessly without system crashes!
 
 ### 🚀 Performance & Memory

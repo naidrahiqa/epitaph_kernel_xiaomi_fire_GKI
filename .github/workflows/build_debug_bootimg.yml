@@ -77,7 +77,7 @@ jobs:
             "${{ github.workspace }}" \
             "$GITHUB_ENV" \
             "bazel-default" \
-            "kernelsu-next" \
+            "xxksu" \
             "false" > /tmp/prep_build.log 2>&1; then
               cat /tmp/prep_build.log
               echo "❌ ERROR: prepare_kernel_build.sh failed!" > kernel/build.log
@@ -284,7 +284,7 @@ jobs:
 
             ### 📊 Build Info
             - **Kernel Version:** `GKI 6.6 (Minimal)`
-            - **Root Method:** `KernelSU-Next v${{ env.KSU_VERSION }}`
+            - **Root Method:** `xxKSU v${{ env.KSU_VERSION }}`
             - **PStore console-ramoops:** `✅ Enabled`
             - **Build Timestamp:** `${{ env.BUILD_TIME }}` (run #${{ github.run_number }})
 
@@ -322,7 +322,7 @@ jobs:
           BOOT_BYTES=$(du -b "$BOOT_FILE" | cut -f1)
           RELEASE_URL="https://github.com/${REPO}/releases/tag/${INPUT_RELEASE_TAG}"
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
-          CAPTION=$(printf '🔧 <b>Epitaph Rescue Kernel %s — Build Success!</b>\n━━━━━━━━━━━━━━━━━━━━━\n🚀 <b>Debug & Recovery boot.img for Redmi 12 (fire)</b>\nFlash via Fastboot if you bootloop\n\n📊 <b>System Metrics:</b>\n• <b>Type:</b> GKI 6.6 (Minimal)\n• <b>Root Method:</b> KernelSU-Next v%s\n• <b>PStore console-ramoops:</b> ✅ Enabled\n• <b>Package Size:</b> %s\n• <b>Timestamp:</b> %s (run #%s)\n\n🔧 <b>Purpose:</b> Extract crash logs from a bootlooping device safely.\n━━━━━━━━━━━━━━━━━━━━━\n📦 <b>GitHub Release & Download:</b>\n%s\n\n🔧 <b>Emergency Rescue & Diagnostics:</b>\n<a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
+          CAPTION=$(printf '🔧 <b>Epitaph Rescue Kernel %s — Build Success!</b>\n━━━━━━━━━━━━━━━━━━━━━\n🚀 <b>Debug & Recovery boot.img for Redmi 12 (fire)</b>\nFlash via Fastboot if you bootloop\n\n📊 <b>System Metrics:</b>\n• <b>Type:</b> GKI 6.6 (Minimal)\n• <b>Root Method:</b> xxKSU v%s\n• <b>PStore console-ramoops:</b> ✅ Enabled\n• <b>Package Size:</b> %s\n• <b>Timestamp:</b> %s (run #%s)\n\n🔧 <b>Purpose:</b> Extract crash logs from a bootlooping device safely.\n━━━━━━━━━━━━━━━━━━━━━\n📦 <b>GitHub Release & Download:</b>\n%s\n\n🔧 <b>Emergency Rescue & Diagnostics:</b>\n<a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
             "$INPUT_RELEASE_TAG" "${KSU_VERSION}" "$BOOT_SIZE" "${BUILD_TIME}" "$RUN_NUMBER" \
             "$RELEASE_URL" "${RESCUE_VER}" "${RESCUE_VER}")
           TG_LIMIT=52428800

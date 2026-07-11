@@ -25,7 +25,7 @@ KERNEL_VERSION="$3"
 GITHUB_WORKSPACE="$4"
 GITHUB_ENV="$5"
 CLANG_TOOLCHAIN="${6:-zyc-latest}"
-KSU_METHOD="${7:-kernelsu-next}"
+KSU_METHOD="${7:-xxksu}"
 WITH_SUSFS="${8:-false}"
 # Fungsi pembantu untuk melakukan percobaan ulang (retry) dengan waktu tunggu eksponensial (backoff)
 retry_cmd() {
@@ -289,10 +289,10 @@ set_kmi() {
 setup_ksu() {
   cd kernel
 
-  if [ "$WITH_SUSFS" = "true" ]; then
-    # Kloning fork pershoot branch dev-susfs yang sudah terintegrasi SUSFS secara pre-patched
-    echo "Cloning KernelSU-Next (pershoot fork dev-susfs branch)..."
-    retry_cmd git clone https://github.com/pershoot/KernelSU-Next -b dev-susfs KernelSU-Next
+  if [ "$KSU_METHOD" = "xxksu" ]; then
+    # Kloning fork xxKSU dari backslashxx branch master
+    echo "Cloning xxKSU (backslashxx fork, master branch)..."
+    retry_cmd git clone https://github.com/backslashxx/KernelSU -b master KernelSU-Next
   else
     # Kloning upstream resmi KernelSU-Next branch dev (branch default utama repo ini) untuk build murni tanpa SUSFS
     echo "Cloning KernelSU-Next (official upstream dev branch)..."
@@ -301,9 +301,9 @@ setup_ksu() {
 
   if [ ! -d "KernelSU-Next/kernel" ]; then
     {
-      echo "❌ ERROR: KernelSU-Next/kernel/ directory not found!"
+      echo "❌ ERROR: KernelSU/kernel/ directory not found!"
       echo "📋 Details: Clone was successful but directory 'kernel' is missing inside cloned repository."
-      echo "🔧 Suggested fix: Check KernelSU-Next repository structure or selected branch."
+      echo "🔧 Suggested fix: Check KernelSU repository structure or selected branch."
     } > "$GITHUB_WORKSPACE/kernel/build.log"
     exit 1
   fi
@@ -316,21 +316,13 @@ setup_ksu() {
   fi
   KSU_TAG=$(cd KernelSU-Next && git describe --abbrev=0 --tags 2>/dev/null || echo "v${KSU_VERSION}")
 
-  echo "Copying KernelSU-Next/kernel to common/drivers/kernelsu..."
+  echo "Copying KernelSU/kernel to common/drivers/kernelsu..."
   rm -rf common/drivers/kernelsu
   cp -r KernelSU-Next/kernel common/drivers/kernelsu
   cp -r KernelSU-Next/uapi common/drivers/kernelsu/uapi 2>/dev/null || true
 
-  # VERIFY dengan cek symbol pre-patched
+  # VERIFY dengan cek symbol
   KSU_PREPATCHED=false
-  if [ "$WITH_SUSFS" = "true" ]; then
-    if grep -rq "ksu_susfs_init\|susfs_set_uname" common/drivers/kernelsu/ 2>/dev/null; then
-      echo "✅ pershoot KernelSU-Next fork is verified pre-patched for SUSFS!"
-      KSU_PREPATCHED=true
-    else
-      echo "⚠️ pershoot fork does not seem pre-patched or symbols are missing!"
-    fi
-  fi
   echo "KSU_PREPATCHED=$KSU_PREPATCHED" >> "$GITHUB_ENV"
 
   find common/drivers/kernelsu -name "BUILD.bazel" -delete

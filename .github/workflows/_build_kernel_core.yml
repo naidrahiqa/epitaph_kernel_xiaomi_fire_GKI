@@ -18,7 +18,7 @@ on:
       ksu_method:
         required: true
         type: string
-        default: 'kernelsu-next'
+        default: 'xxksu'
       clang_toolchain:
         required: true
         type: string
@@ -47,7 +47,7 @@ env:
 
 jobs:
   build:
-    name: "Build GKI + SUSFS (ZyClang)"
+    name: "Build GKI (ZyClang)"
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
@@ -111,7 +111,7 @@ jobs:
           echo "TOOLCHAIN_NAME=ZyClang" >> $GITHUB_ENV
           BUILD_DATE=$(TZ='Asia/Jakarta' date '+%d%m%Y')
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
-          BASE_NAME="${INPUT_NAME}-ZyClang-${INPUT_KSU}-SUSFS-${BUILD_DATE}"
+          BASE_NAME="${INPUT_NAME}-ZyClang-${INPUT_KSU}-${BUILD_DATE}"
           echo "ZIP_NAME=${BASE_NAME}" >> $GITHUB_ENV
           echo "✅ Environment initialized: ${BASE_NAME}"
 
@@ -140,310 +140,16 @@ jobs:
           cat /tmp/prep_build.log
           echo "Persiapan Kernel Build,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
 
-      # FIX 1: Re-enable SUSFS step — was hardcoded `if: false` for testing.
-      # Sekarang mengikuti input `with_susfs` dari matrix dispatcher.
-      # SUSFS sering error compile karena patch gagal apply tapi build lanjut.
-      # Fix: patch application sekarang MANDATORY — kalau gagal, exit langsung.
-      - name: Setup SUSFS
-        if: inputs.with_susfs == 'true'
-        run: |
-          set -euo pipefail
-          START_TIME=$(date +%s)
-          cd kernel
-
-          echo "📥 Cloning SUSFS4KSU..."
-          CLONED_SUSFS=false
-          for branch in "gki-android15-6.6" "gki-android14-6.6" "kernel-6.6" "main"; do
-            echo "Trying to clone susfs4ksu branch: $branch"
-            if git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$branch" susfs4ksu > /tmp/susfs_clone.log 2>&1; then
-              echo "✅ Successfully cloned SUSFS4KSU branch: $branch"
-              CLONED_SUSFS=true
-              break
-            fi
-          done
-          if [ "$CLONED_SUSFS" = "false" ]; then
-            cat /tmp/susfs_clone.log
-            {
-              echo "❌ ERROR: Failed to clone SUSFS4KSU!"
-              echo "📋 Details: Clone failed from all branches (gki-android15-6.6, gki-android14-6.6, kernel-6.6, main)"
-              echo "🔧 Suggested fix: Check GitLab availability or repo visibility."
-            } > "$GITHUB_WORKSPACE/kernel/build.log"
-            exit 1
-          fi
-
-          cd common
-
-          # LANGKAH 1: Terapkan patch kernel SUSFS terlebih dahulu.
-          echo "🔧 Applying SUSFS kernel patch..."
-          SUSFS_PATCH_APPLIED=false
-
-          echo "📁 Listing available SUSFS patches in susfs4ksu/kernel_patches/:"
-          ls -la ../susfs4ksu/kernel_patches/ || echo "  (none)"
-
-          # Try exact version match first
-          for patch in \
-            "../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-${ANDROID_VERSION}-${KERNEL_VERSION}.patch" \
-            "../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch" \
-            "../susfs4ksu/kernel_patches/AnyKernel3/patches/${KERNEL_VERSION}/50_add_susfs_in_kernel.patch"; do
-            if [ -f "$patch" ]; then
-              echo "  → Trying exact patch: $(basename $patch)"
-              echo "--- git apply --check ---"
-              if git apply --check "$patch" 2>/dev/null; then
-                git apply "$patch" && echo "  ✅ git apply success" && SUSFS_PATCH_APPLIED=true && break
-              else
-                echo "  ⚠️ git apply --check failed, trying patch --forward --fuzz=3..."
-                echo "--- patch --dry-run ---"
-                if patch -p1 --forward --fuzz=3 --dry-run < "$patch" 2>/dev/null; then
-                  patch -p1 --forward --fuzz=3 < "$patch" && echo "  ✅ patch success" && SUSFS_PATCH_APPLIED=true && break
-                else
-                  echo "  ❌ Patch does not apply cleanly to this kernel version"
-                fi
-              fi
-            fi
-          done
-
-          # Fallback: try any SUSFS patch
-          if [ "$SUSFS_PATCH_APPLIED" = "false" ]; then
-            echo "  → Trying fallback patches..."
-            for patch in \
-              ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-*.patch \
-              ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-*.patch; do
-              if [ -f "$patch" ]; then
-                echo "  → Trying fallback patch: $(basename $patch)"
-                echo "--- git apply --check ---"
-                if git apply --check "$patch" 2>/dev/null; then
-                  git apply "$patch" && echo "  ✅ git apply success" && SUSFS_PATCH_APPLIED=true && break
-                else
-                  echo "  ⚠️ git apply --check failed, trying patch..."
-                  echo "--- patch --dry-run ---"
-                  if patch -p1 --forward --fuzz=3 --dry-run < "$patch" 2>/dev/null; then
-                    patch -p1 --forward --fuzz=3 < "$patch" && echo "  ✅ patch success" && SUSFS_PATCH_APPLIED=true && break
-                  else
-                    echo "  ❌ Patch does not apply cleanly"
-                  fi
-                fi
-              fi
-            done
-          fi
-
-          if [ "$SUSFS_PATCH_APPLIED" = "false" ]; then
-            {
-              echo "❌ ERROR: No SUSFS kernel patch could be applied!"
-              echo "📋 Details: SUSFS patch is incompatible with this kernel version."
-              echo "🔧 Suggested fix: Check kernel source tree and available patches."
-            } | tee "$GITHUB_WORKSPACE/kernel/build.log"
-            exit 1
-          fi
-          echo "✅ SUSFS kernel patch applied successfully"
-
-          # LANGKAH 2: Salin file sumber utama SUSFS ke dalam direktori kernel
-          echo "📋 Copying SUSFS source files..."
-          cp -f ../susfs4ksu/kernel_patches/fs/* fs/
-          cp -f ../susfs4ksu/kernel_patches/include/linux/* include/linux/
-
-          # JANGAN inject "#include <linux/cred.h>" via sed kalau sudah ada
-          if [ -f "include/linux/susfs_def.h" ]; then
-            if ! grep -q "linux/cred.h" include/linux/susfs_def.h; then
-              sed -i '1i #include <linux/cred.h>' include/linux/susfs_def.h
-              echo "   ✅ Added #include <linux/cred.h> to include/linux/susfs_def.h"
-            else
-              echo "   ℹ️ #include <linux/cred.h> already exists in include/linux/susfs_def.h"
-            fi
-          fi
-          if [ -f "include/linux/susfs.h" ]; then
-            if ! grep -q "linux/cred.h" include/linux/susfs.h; then
-              sed -i '1i #include <linux/cred.h>' include/linux/susfs.h
-              echo "   ✅ Added #include <linux/cred.h> to include/linux/susfs.h"
-            else
-              echo "   ℹ️ #include <linux/cred.h> already exists in include/linux/susfs.h"
-            fi
-          fi
-
-          [ -f "fs/Makefile" ] && ! grep -q "susfs.o" "fs/Makefile" \
-            && echo 'obj-$(CONFIG_SUSFS) += susfs.o' >> "fs/Makefile"
-
-          git add fs/susfs.c include/linux/susfs.h fs/Makefile 2>/dev/null || true
-
-          # LANGKAH 3: Tangani konflik deklarasi extern susfs pada selinux/hooks.c
-          if [ -f "security/selinux/hooks.c" ]; then
-            EXTERN_COUNT=$(grep -c "extern int susfs_" security/selinux/hooks.c 2>/dev/null || true)
-            EXTERN_COUNT=${EXTERN_COUNT:-0}
-            if [ "$EXTERN_COUNT" -gt 1 ]; then
-              echo "   Fixing $EXTERN_COUNT duplicate extern susfs declarations in selinux/hooks.c..."
-              awk '
-                /extern int susfs_/ {
-                  if (seen[$0]++) next
-                }
-                { print }
-              ' security/selinux/hooks.c > /tmp/hooks_fixed.c \
-                && mv /tmp/hooks_fixed.c security/selinux/hooks.c \
-                && echo "   ✅ selinux/hooks.c deduplication done"
-            fi
-          fi
-
-          # LANGKAH 4: Konfigurasi SUSFS untuk KernelSU-Next source
-          # Cek KSU_PREPATCHED yang di-pass dari prepare_kernel_build.sh
-          echo "Checking if KernelSU-Next is pre-patched: ${KSU_PREPATCHED:-false}"
-          KSU_KERNEL="drivers/kernelsu"
-          if [ -d "$KSU_KERNEL" ]; then
-            if [ "${KSU_PREPATCHED:-false}" = "true" ]; then
-              echo "✅ KernelSU-Next is pre-patched (Pershoot fork). Skipping manual patching."
-            else
-              echo "🔧 Applying SUSFS KSU patch to upstream KernelSU-Next..."
-              KSU_PATCH_APPLIED=false
-              for ksu_patch in \
-                "../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" \
-                "../susfs4ksu/kernel_patches/10_enable_susfs_for_ksu.patch" \
-                "../susfs4ksu/kernel_patches/KernelSU-Next/10_enable_susfs_for_ksu.patch"; do
-                if [ -f "$ksu_patch" ]; then
-                  echo "  → Trying KSU patch: $(basename $ksu_patch) from $(dirname $ksu_patch)"
-                  if git apply --check "$ksu_patch" 2>/dev/null; then
-                    git apply "$ksu_patch" && echo "  ✅ KSU SUSFS patch applied via git apply" && KSU_PATCH_APPLIED=true && break
-                  else
-                    echo "  ⚠️ git apply failed, trying patch -p1 --fuzz=3..."
-                    if patch -p1 --forward --fuzz=3 --dry-run < "$ksu_patch" 2>/dev/null; then
-                      patch -p1 --forward --fuzz=3 < "$ksu_patch" && echo "  ✅ KSU SUSFS patch applied via patch" && KSU_PATCH_APPLIED=true && break
-                    else
-                      echo "  ❌ KSU patch does not apply cleanly"
-                    fi
-                  fi
-                fi
-              done
-
-              if [ "$KSU_PATCH_APPLIED" = "false" ]; then
-                echo "⚠️ WARNING: 10_enable_susfs_for_ksu.patch not found or failed to apply!"
-                echo "   Continuing build — SUSFS may not function correctly..."
-              fi
-            fi
-
-            # Pastikan Git melacak semua perubahan di drivers/kernelsu agar terdeteksi Bazel Kleaf sandbox
-            git add -f drivers/kernelsu/ 2>/dev/null || true
-
-            # Tambahkan menu Kconfig jika belum ada (dari patch atau manual)
-            if ! grep -q "CONFIG_KSU_SUSFS" "$KSU_KERNEL/Kconfig" 2>/dev/null; then
-              printf '%s\n' \
-                'menu "KernelSU - SUSFS"' \
-                'config KSU_SUSFS' '  bool "KernelSU addon - SUSFS"' '  depends on KSU' '  default y' \
-                'config KSU_SUSFS_SUS_PATH' '  bool "Hide suspicious paths"' '  depends on KSU_SUSFS' '  default y' \
-                'config KSU_SUSFS_SUS_MOUNT' '  bool "Hide suspicious mounts"' '  depends on KSU_SUSFS' '  default y' \
-                'config KSU_SUSFS_SUS_KSTAT' '  bool "Spoof kstat"' '  depends on KSU_SUSFS' '  default y' \
-                'config KSU_SUSFS_SPOOF_UNAME' '  bool "Spoof uname"' '  depends on KSU_SUSFS' '  default y' \
-                'config KSU_SUSFS_ENABLE_LOG' '  bool "Enable logging"' '  depends on KSU_SUSFS' '  default y' \
-                'config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS' '  bool "Hide symbols from kallsyms"' '  depends on KSU_SUSFS' '  default y' \
-                'config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG' '  bool "Spoof cmdline/bootconfig"' '  depends on KSU_SUSFS' '  default y' \
-                'config KSU_SUSFS_OPEN_REDIRECT' '  bool "Open redirect"' '  depends on KSU_SUSFS' '  default y' \
-                'config KSU_SUSFS_SUS_MAP' '  bool "Hide mmapped files from proc maps"' '  depends on KSU_SUSFS' '  default y' \
-                'endmenu' >> "$KSU_KERNEL/Kconfig"
-            fi
-
-            # Tambahkan blok Makefile jika belum ada
-            if ! grep -q "SUSFS_VERSION" "$KSU_KERNEL/Makefile" 2>/dev/null; then
-              printf '%s\n' \
-                '## SUSFS ##' \
-                'ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)' \
-                '$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E "^#define SUSFS_VERSION" | cut -d" " -f3 | sed "s/\"//g"))' \
-                '$(info -- SUSFS_VERSION: $(SUSFS_VERSION))' \
-                'else' \
-                '$(info -- SUSFS not integrated)' \
-                'endif' >> "$KSU_KERNEL/Makefile"
-            fi
-
-            git add "$KSU_KERNEL/Makefile" "$KSU_KERNEL/Kconfig" 2>/dev/null || true
-          fi
-
-          # Rigorous check
-          SUSFS_INTEGRATED=false
-          REJ_COUNT=$(find . -name "*.rej" | wc -l)
-          echo "🔍 Verifying SUSFS Integration..."
-          if [ ! -f "fs/susfs.c" ]; then
-            echo "   ❌ fs/susfs.c does not exist"
-          elif [ $(wc -c < "fs/susfs.c") -le 1024 ]; then
-            echo "   ❌ fs/susfs.c size is too small ($(wc -c < "fs/susfs.c") bytes)"
-          fi
-          if [ ! -f "include/linux/susfs.h" ]; then
-            echo "   ❌ include/linux/susfs.h does not exist"
-          fi
-          if ! grep -rqi "susfs" drivers/kernelsu/ 2>/dev/null; then
-            echo "   ❌ KSU SUSFS symbols not found in drivers/kernelsu/ (recursive search failed)"
-          fi
-          if [ "$REJ_COUNT" -ne 0 ]; then
-            echo "   ❌ There are $REJ_COUNT rejected patch files (*.rej)"
-          fi
-
-          if [ -f "fs/susfs.c" ] && [ $(wc -c < "fs/susfs.c") -gt 1024 ] \
-             && [ -f "include/linux/susfs.h" ] \
-             && grep -rqi "susfs" drivers/kernelsu/ 2>/dev/null \
-             && [ "$REJ_COUNT" -eq 0 ]; then
-            SUSFS_INTEGRATED=true
-          fi
-
-          echo "SUSFS_OK=$SUSFS_INTEGRATED" >> $GITHUB_ENV
-          echo "✅ SUSFS_INTEGRATED status: $SUSFS_INTEGRATED"
-
-          if [ "$SUSFS_INTEGRATED" = "true" ]; then
-            if [ -f "security/selinux/ss/services.c" ]; then
-              echo "🔧 Checking and fixing SUSFS SELinux symbols..."
-              python3 "$GITHUB_WORKSPACE/workflow_scripts/patch_susfs_selinux.py"
-            else
-              echo "⚠️ security/selinux/ss/services.c not found, skipping patch_susfs_selinux.py"
-            fi
-
-            # FIX for BUG #3.b - fake_status type conflict in security/selinux/selinuxfs.c
-            if [ -f "security/selinux/selinuxfs.c" ]; then
-              sed -i 's/__attribute__((weak)) int fake_status = 0;/__attribute__((weak)) struct page *fake_status = NULL;/g' security/selinux/selinuxfs.c
-              echo "   ✅ Patched fake_status in security/selinux/selinuxfs.c to avoid type redefinition error"
-            fi
-
-            [ ! -f "fs/susfs.c" ] && { echo "❌ fs/susfs.c not found!"; exit 1; }
-            [ ! -f "include/linux/susfs.h" ] && { echo "❌ include/linux/susfs.h not found!"; exit 1; }
-
-            # Melakukan pemeriksaan ketat terhadap semua file .rej di seluruh kernel tree.
-            # Jika ada patch yang tertolak (rejected), hentikan build langsung agar tidak memicu kegagalan link-time.
-            CRITICAL_REJ=$(find . -name "*.rej" -type f 2>/dev/null || true)
-            if [ -n "$CRITICAL_REJ" ]; then
-              {
-                echo "❌ ERROR: SUSFS patch rejected in kernel source tree:"
-                echo "📋 Details: Rejected patch files found."
-                echo "🔧 Suggested fix: Review the following .rej contents and update kernel patches."
-                for rej in $CRITICAL_REJ; do
-                  echo "=== $rej ===" && cat "$rej" && echo "==="
-                done
-              } | tee "$GITHUB_WORKSPACE/kernel/build.log"
-              exit 1
-            fi
-
-            # CRITICAL: Commit all SUSFS and custom changes so Bazel Kleaf sandbox can see them
-            cd "$GITHUB_WORKSPACE/kernel/common"
-            git add -A 2>/dev/null || true
-            git -c user.email="ci@epitaph" -c user.name="Epitaph CI" \
-              commit -m "ci: integrate SUSFS $(cat include/linux/susfs.h | grep SUSFS_VERSION | head -1 | awk '{print $3}' || echo 'unknown')" \
-              --allow-empty 2>/dev/null || true
-            echo "✅ SUSFS changes committed to git HEAD — visible to Bazel sandbox"
-
-            echo "✅ SUSFS integration complete"
-            echo "Konfigurasi SUSFS,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
-          else
-            {
-              echo "❌ ERROR: SUSFS integration failed!"
-              echo "📋 Details: Rigorous integration check did not pass (SUSFS_OK=false)."
-              echo "🔧 Suggested fix: Check patch logs, KSU pre-patched state, and compile requirements."
-            } > "$GITHUB_WORKSPACE/kernel/build.log"
-            exit 1
-          fi
-
       - name: Diagnostic Before Configure
         run: |
           set -euo pipefail
           cd kernel/common
           echo "=== 🔍 DIAGNOSTIC REPORT ==="
-          echo "📂 Rejected patch files (*.rej):"
-          find . -name "*.rej" -type f 2>/dev/null || echo "  None"
-          
           echo "📂 Git status short:"
           git status --short
           
-          echo "📂 Verify KSU + SUSFS symbols in drivers/kernelsu/:"
-          for sym in ksu_handle_input susfs_handle_ioctl ksu_susfs_init; do
+          echo "📂 Verify KSU symbols in drivers/kernelsu/:"
+          for sym in ksu_handle_input; do
             if grep -rq "$sym" drivers/kernelsu/ 2>/dev/null; then
               echo "  ✅ Symbol '$sym' exists in drivers/kernelsu/"
             else
@@ -451,15 +157,8 @@ jobs:
             fi
           done
           
-          echo "📂 SUSFS Version header check (include/linux/susfs.h first 20 lines):"
-          if [ -f "include/linux/susfs.h" ]; then
-            head -n 20 include/linux/susfs.h
-          else
-            echo "  ⚠️ include/linux/susfs.h not found"
-          fi
-          
-          echo "📂 Initial defconfig checking for KSU/SUSFS:"
-          grep -E "CONFIG_KSU=|CONFIG_KSU_SUSFS=" arch/arm64/configs/gki_defconfig || echo "  None"
+          echo "📂 Initial defconfig checking for KSU:"
+          grep -E "CONFIG_KSU=" arch/arm64/configs/gki_defconfig || echo "  None"
           echo "====================================="
 
       - name: Configure Kernel
@@ -489,43 +188,6 @@ jobs:
           echo "" >> "$DEFCONFIG"
           echo "# Energy Model" >> "$DEFCONFIG"
           add_cfg "CONFIG_ENERGY_MODEL=y"
-
-          if [ "$SUSFS_OK" = "true" ]; then
-            echo "" >> $DEFCONFIG
-            echo "# SUSFS" >> $DEFCONFIG
-            for cfg in \
-              CONFIG_KSU_SUSFS \
-              CONFIG_SUSFS \
-              CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT \
-              CONFIG_KSU_SUSFS_SUS_MOUNT \
-              CONFIG_KSU_SUSFS_SUS_MAP \
-              CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT \
-              CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT \
-              CONFIG_KSU_SUSFS_SUS_KSTAT \
-              CONFIG_KSU_SUSFS_TRY_UMOUNT \
-              CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT \
-              CONFIG_KSU_SUSFS_SPOOF_UNAME \
-              CONFIG_KSU_SUSFS_ENABLE_LOG \
-              CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
-              CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
-              CONFIG_KSU_SUSFS_OPEN_REDIRECT; do
-              add_cfg "${cfg}=y"
-            done
-            add_cfg "CONFIG_KSU_SUSFS_SUS_PATH=y"
-            add_cfg "CONFIG_KSU_SUSFS_SUS_SU=n"
-            echo "✅ SUSFS configs written to defconfig"
-
-            if ! grep -q "CONFIG_KSU=y" "$DEFCONFIG"; then
-              {
-                echo "❌ ERROR: SUSFS is enabled but CONFIG_KSU is not set to 'y' in defconfig!"
-                echo "📋 Details: SUSFS requires KernelSU to be enabled to function."
-                echo "🔧 Suggested fix: Ensure CONFIG_KSU=y is present in gki_defconfig."
-              } > "$GITHUB_WORKSPACE/kernel/build.log"
-              exit 1
-            fi
-          else
-            echo "⚠️ SUSFS disabled or integration failed — building without SUSFS"
-          fi
 
           echo "" >> "$DEFCONFIG"
           echo "# Module Compatibility" >> "$DEFCONFIG"
@@ -965,9 +627,9 @@ jobs:
           
           ZIP_BYTES=$(du -b "$ZIP_FILE" | cut -f1 || echo "0")
           ZIP_SIZE=$(du -h "$ZIP_FILE" | cut -f1 || echo "?")
-          SUSFS_LABEL="Yes"
+          SUSFS_LABEL="None (No-Mount)"
           RELEASE_URL="https://github.com/${REPO}/releases/tag/${INPUT_RELEASE_TAG}"
-          CAPTION=$(printf '👑 <b>Epitaph Kernel %s — Build Success!</b>\n━━━━━━━━━━━━━━━━━━━━━\n🚀 <b>GKI 6.6 Kernel for Redmi 12 (fire)</b>\nRunning Android 15 HyperOS 2.0\n\n📊 <b>System Metrics:</b>\n• <b>Root Method:</b> %s v%s\n• <b>Kernel KMI:</b> android15-%s\n• <b>SUSFS Status:</b> %s\n• <b>Compiler Info:</b> %s\n• <b>Package Size:</b> %s\n• <b>Timestamp:</b> %s (run #%s)\n\n📝 <b>Changelog:</b>\n%s\n━━━━━━━━━━━━━━━━━━━━━\n📦 <b>GitHub Release & Download:</b>\n%s\n\n🔧 <b>Emergency Rescue & Diagnostics:</b>\n<a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
+          CAPTION=$(printf '👑 <b>Epitaph Kernel %s — Build Success!</b>\n━━━━━━━━━━━━━━━━━━━━━\n🚀 <b>GKI 6.6 Kernel for Redmi 12 (fire)</b>\nRunning Android 15 HyperOS 2.0\n\n📊 <b>System Metrics:</b>\n• <b>Root Method:</b> %s v%s\n• <b>Kernel KMI:</b> android15-%s\n• <b>Mount Mode:</b> %s\n• <b>Compiler Info:</b> %s\n• <b>Package Size:</b> %s\n• <b>Timestamp:</b> %s (run #%s)\n\n📝 <b>Changelog:</b>\n%s\n━━━━━━━━━━━━━━━━━━━━━\n📦 <b>GitHub Release & Download:</b>\n%s\n\n🔧 <b>Emergency Rescue & Diagnostics:</b>\n<a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
             "$INPUT_RELEASE_TAG" "$INPUT_KSU" "${KSU_VERSION}" "${KMI_GENERATION}" "$SUSFS_LABEL" \
             "${TOOLCHAIN_VER}" "$ZIP_SIZE" "${BUILD_TIME}" "$RUN_NUMBER" \
             "$(echo "${GIT_CHANGELOG}" | head -10)" "$RELEASE_URL" "${RESCUE_VER}" "${RESCUE_VER}")
