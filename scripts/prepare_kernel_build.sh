@@ -100,7 +100,8 @@ install_deps() {
     python3 python3-pip python-is-python3 zip unzip cpio \
     kmod rsync lz4 jq patch binutils libncurses-dev \
     pkg-config ninja-build zstd aria2 p7zip-full \
-    gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+    gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+    libc++-dev
 }
 
 # ──────────────────────────────────────────────
