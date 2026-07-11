@@ -417,15 +417,16 @@ jobs:
           echo "Generate Changelog,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
 
       - name: Package AnyKernel3
+        env:
+          CUSTOM_NAME: ${{ inputs.custom_name }}
+          BUILD_VER: ${{ github.run_number }}
+          AUTHOR: ${{ inputs.author_name }}
+          TOOLCHAIN_SHORT: ${{ env.TOOLCHAIN_NAME }}
+          BASE_NAME: ${{ env.ZIP_NAME }}
         run: |
           set -euo pipefail
           START_TIME=$(date +%s)
-          CUSTOM_NAME="${{ inputs.custom_name }}"
-          BUILD_VER="${{ github.run_number }}"
-          AUTHOR="${{ inputs.author_name }}"
           GOVERNOR="schedutil"
-          TOOLCHAIN_SHORT="${{ env.TOOLCHAIN_NAME }}"
-          BASE_NAME="${{ env.ZIP_NAME }}"
 
           # PINNED FORK: Menggunakan fork AnyKernel3 milik Naidrahiqa untuk menghindari perubahan upstream yang tidak kompatibel.
           # Jika gagal clone (misal karena repositori belum dibuat/masih privat), lakukan fallback otomatis ke osm0sis/AnyKernel3 resmi.
@@ -672,10 +673,12 @@ jobs:
         env:
           TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_ERROR_CHAT_ID: ${{ secrets.TELEGRAM_ERROR_CHAT_ID }}
+          ACTIONS_REPO: ${{ github.repository }}
+          ACTIONS_RUN_ID: ${{ github.run_id }}
         run: |
           [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
           TG_API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
-          ACTIONS_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ACTIONS_URL="https://github.com/${ACTIONS_REPO}/actions/runs/${ACTIONS_RUN_ID}"
 
           # ─── 1. Gabungkan semua error log ───
           COMBINED_LOG="/tmp/combined_build.log"
