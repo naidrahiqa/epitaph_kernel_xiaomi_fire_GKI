@@ -59,18 +59,39 @@ jobs:
           echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "✅ release_tag: $TAG"
 
+      - name: Setup Matrix
+        id: matrix
+        shell: bash
+        env:
+          INPUT_CLANG: ${{ github.event.inputs.clang_toolchain }}
+        run: |
+          if [ -n "$INPUT_CLANG" ]; then
+            MATRIX_JSON="[\"$INPUT_CLANG\"]"
+          else
+            MATRIX_JSON='["zyc-latest", "cyrene-clang"]'
+          fi
+          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
+          echo "total=$(echo $MATRIX_JSON | jq '. | length')" >> "$GITHUB_OUTPUT"
+          echo "✅ Matrix configured: $MATRIX_JSON"
+
       - name: "📊 Show Build Plan"
         env:
-          CLANG_TOOLCHAIN: ${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}
+          MATRIX_JSON: ${{ steps.matrix.outputs.matrix }}
         run: |
-          if [ "$CLANG_TOOLCHAIN" = "cyrene-clang" ]; then
-            TC_DISPLAY="Cyrene Clang"
-          else
+          TC_DISPLAY=""
+          if echo "$MATRIX_JSON" | grep -q "zyc-latest"; then
             TC_DISPLAY="ZyClang"
+          fi
+          if echo "$MATRIX_JSON" | grep -q "cyrene-clang"; then
+            if [ -n "$TC_DISPLAY" ]; then
+              TC_DISPLAY="$TC_DISPLAY + Cyrene Clang"
+            else
+              TC_DISPLAY="Cyrene Clang"
+            fi
           fi
           echo "## 🎛️ Epitaph Kernel Build" >> "$GITHUB_STEP_SUMMARY"
           echo "**Release Tag:** \`${{ steps.tag.outputs.release_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Configuration:** xxKSU + $TC_DISPLAY (single build)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Configuration:** xxKSU + $TC_DISPLAY (matrix build)" >> "$GITHUB_STEP_SUMMARY"
 
   notify_start:
     name: "🚀 Notify Telegram (Starting)"
@@ -86,7 +107,7 @@ jobs:
           ACTOR: ${{ github.actor }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
-          CLANG_TOOLCHAIN: ${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}
+          MATRIX_JSON: ${{ needs.prepare.outputs.matrix }}
         run: |
           if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
             echo "❌ Telegram secrets not set. Skipping."
@@ -95,10 +116,16 @@ jobs:
 
           RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
           
-          if [ "$CLANG_TOOLCHAIN" = "cyrene-clang" ]; then
-            TC_DISPLAY="Cyrene Clang"
-          else
+          TC_DISPLAY=""
+          if echo "$MATRIX_JSON" | grep -q "zyc-latest"; then
             TC_DISPLAY="ZyClang"
+          fi
+          if echo "$MATRIX_JSON" | grep -q "cyrene-clang"; then
+            if [ -n "$TC_DISPLAY" ]; then
+              TC_DISPLAY="$TC_DISPLAY + Cyrene Clang"
+            else
+              TC_DISPLAY="Cyrene Clang"
+            fi
           fi
 
           MESSAGE=$(printf '🔥 <b>EPITAPH KERNEL · Build Starting</b>\n────────────────\n🚀 <b>Build:</b> %s\n📱 <b>Device:</b> Redmi 12 (fire) · G88\n🛠️ <b>Compiler:</b> %s\n⚡ <b>Feature:</b> xxKSU [No-SUSFS]\n👤 <b>Actor:</b> %s\n────────────────\n🔍 <a href="%s">Monitor Build Progress on GitHub Actions</a>' \
@@ -123,6 +150,10 @@ jobs:
 
   trigger:
     needs: [prepare, notify_start]
+    strategy:
+      matrix:
+        clang: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+      fail-fast: false
     uses: ./.github/workflows/_build_kernel_core.yml
     secrets: inherit
     with:
@@ -130,7 +161,7 @@ jobs:
       custom_name: "Epitaph"
       author_name: "Naidrahiqa"
       ksu_method: "xxksu"
-      clang_toolchain: "${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}"
+      clang_toolchain: "${{ matrix.clang }}"
       release_tag: "${{ needs.prepare.outputs.release_tag }}"
 
   summary:
@@ -143,12 +174,18 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           TRIGGER_RESULT: ${{ needs.trigger.result }}
-          CLANG_TOOLCHAIN: ${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}
+          MATRIX_JSON: ${{ needs.prepare.outputs.matrix }}
         run: |
-          if [ "$CLANG_TOOLCHAIN" = "cyrene-clang" ]; then
-            TC_DISPLAY="Cyrene Clang"
-          else
+          TC_DISPLAY=""
+          if echo "$MATRIX_JSON" | grep -q "zyc-latest"; then
             TC_DISPLAY="ZyClang"
+          fi
+          if echo "$MATRIX_JSON" | grep -q "cyrene-clang"; then
+            if [ -n "$TC_DISPLAY" ]; then
+              TC_DISPLAY="$TC_DISPLAY + Cyrene Clang"
+            else
+              TC_DISPLAY="Cyrene Clang"
+            fi
           fi
           echo "## 🎛️ Epitaph Kernel — Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -174,17 +211,23 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          CLANG_TOOLCHAIN: ${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}
+          MATRIX_JSON: ${{ needs.prepare.outputs.matrix }}
         run: |
           [ -z "$TG_BOT_TOKEN" ] && exit 0
 
           RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
           RELEASE_URL="https://github.com/${REPO}/releases/tag/${RELEASE_TAG}"
 
-          if [ "$CLANG_TOOLCHAIN" = "cyrene-clang" ]; then
-            TC_DISPLAY="Cyrene Clang"
-          else
+          TC_DISPLAY=""
+          if echo "$MATRIX_JSON" | grep -q "zyc-latest"; then
             TC_DISPLAY="ZyClang"
+          fi
+          if echo "$MATRIX_JSON" | grep -q "cyrene-clang"; then
+            if [ -n "$TC_DISPLAY" ]; then
+              TC_DISPLAY="$TC_DISPLAY + Cyrene Clang"
+            else
+              TC_DISPLAY="Cyrene Clang"
+            fi
           fi
 
           if [ "$TRIGGER_RESULT" = "success" ]; then
