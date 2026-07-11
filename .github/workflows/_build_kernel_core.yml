@@ -51,7 +51,7 @@ env:
 
 jobs:
   build:
-    name: "Build GKI (ZyClang)"
+    name: "Build GKI (CyreneClang)"
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
@@ -115,11 +115,7 @@ jobs:
           INPUT_KSU: ${{ inputs.ksu_method }}
           INPUT_CLANG: ${{ inputs.clang_toolchain }}
         run: |
-          if [ "$INPUT_CLANG" = "cyrene-clang" ]; then
-            TC_LABEL="CyreneClang"
-          else
-            TC_LABEL="ZyClang"
-          fi
+          TC_LABEL="CyreneClang"
           echo "TOOLCHAIN_NAME=$TC_LABEL" >> $GITHUB_ENV
           BUILD_DATE=$(TZ='Asia/Jakarta' date '+%d%m%Y')
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
@@ -319,7 +315,7 @@ jobs:
           fi
           echo "Konfigurasi Kernel,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
 
-      - name: Build Kernel (ZyClang)
+      - name: Build Kernel (CyreneClang)
         run: |
           set -euo pipefail
           START_TIME=$(date +%s)
