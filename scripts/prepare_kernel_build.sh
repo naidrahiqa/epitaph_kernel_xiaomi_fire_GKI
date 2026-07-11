@@ -14,7 +14,7 @@
 #   $5 = GITHUB_ENV       path to GITHUB_ENV file
 #   $6 = CLANG_TOOLCHAIN  "zyc-latest" (core only, ignored by rescue)
 #   $7 = KSU_METHOD       e.g. "kernelsu-next"
-#   $8 = WITH_SUSFS       "true" | "false" (core only, ignored by rescue)
+#   $8 = WITH_SUSFS       "true" | "false" (DEPRECATED: kept for positional arg compat, unused)
 #   $9 = WITH_NOMOUNT     "true" | "false" (core only, ignored by rescue)
 # ==============================================================================
 
@@ -429,6 +429,8 @@ apply_patches() {
 # ──────────────────────────────────────────────
 # 9b. SETUP NOMOUNT
 # ──────────────────────────────────────────────
+# NOTE: This function intentionally does NOT exit on failure.
+# NoMount is an optional enhancement; build should continue if it fails.
 setup_nomount() {
   [ "$WITH_NOMOUNT" != "true" ] && echo "⏭️ Skipping NoMount (disabled)" && return 0
   

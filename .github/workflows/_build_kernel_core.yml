@@ -292,11 +292,6 @@ jobs:
           add_cfg "CONFIG_PSTORE_PMSG=y"
           add_cfg "CONFIG_PSTORE_RAM=y"
 
-          # NoMount — Kernel-based file injection and path redirection framework
-          echo "" >> "$DEFCONFIG"
-          echo "# NoMount file injection framework" >> "$DEFCONFIG"
-          add_cfg "CONFIG_NOMOUNT=y"
-
           git add arch/arm64/configs/gki_defconfig
           echo "✅ Defconfig finalized and added to git"
 
