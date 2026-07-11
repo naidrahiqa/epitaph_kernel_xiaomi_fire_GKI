@@ -22,7 +22,7 @@ on:
       clang_toolchain:
         required: true
         type: string
-        default: 'zyc-latest'
+        default: 'cyrene-clang'
       release_tag:
         required: true
         type: string

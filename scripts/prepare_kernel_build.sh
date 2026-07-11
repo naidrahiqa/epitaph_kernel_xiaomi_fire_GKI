@@ -24,7 +24,7 @@ ANDROID_VERSION="$2"
 KERNEL_VERSION="$3"
 GITHUB_WORKSPACE="$4"
 GITHUB_ENV="$5"
-CLANG_TOOLCHAIN="${6:-zyc-latest}"
+CLANG_TOOLCHAIN="${6:-cyrene-clang}"
 KSU_METHOD="${7:-xxksu}"
 WITH_SUSFS="${8:-false}"
 # Fungsi pembantu untuk melakukan percobaan ulang (retry) dengan waktu tunggu eksponensial (backoff)
@@ -159,23 +159,6 @@ download_toolchain() {
   }
 
   case "$CLANG_TOOLCHAIN" in
-    zyc-latest)
-      echo "📥 Mengunduh ZyClang..."
-      ZYASSET_URL=$(retry_cmd fetch_release_asset "ZyCromerZ/Clang" ".tar.gz")
-      if [ -z "$ZYASSET_URL" ]; then
-        {
-          echo "❌ ERROR: Gagal mendapatkan URL ZyClang!"
-          echo "📋 Detail: Permintaan API GitHub mengembalikan URL aset kosong."
-          echo "🔧 Saran perbaikan: Periksa konektivitas jaringan atau batas tingkat API."
-        } > "$GITHUB_WORKSPACE/kernel/build.log"
-        exit 1
-      fi
-      retry_cmd aria2c -x16 -s16 -k1M --retry-wait=5 --max-tries=10 -o clang.tar.gz "$ZYASSET_URL"
-      smart_extract clang.tar.gz clang-zyc
-      CLANG_PATH="$GITHUB_WORKSPACE/prebuilts/clang/host/linux-x86/clang-zyc"
-      echo "CUSTOM_CLANG_PATH=$CLANG_PATH" >> "$GITHUB_ENV"
-      echo "TOOLCHAIN_NAME=ZyClang" >> "$GITHUB_ENV"
-      ;;
     cyrene-clang)
       echo "📥 Mengunduh Cyrene Clang..."
       CYASSET_URL=$(retry_cmd fetch_release_asset "naidrahiqa/cyrene_clang" ".tar.zst")
@@ -197,7 +180,7 @@ download_toolchain() {
       {
         echo "❌ ERROR: Toolchain tidak dikenal: $CLANG_TOOLCHAIN!"
         echo "📋 Detail: Clang toolchain '$CLANG_TOOLCHAIN' tidak didukung."
-        echo "🔧 Saran perbaikan: Pilih kompiler yang valid (zyc-latest, cyrene-clang)."
+        echo "🔧 Saran perbaikan: Pilih kompiler yang valid (cyrene-clang)."
       } > "$GITHUB_WORKSPACE/kernel/build.log"
       exit 1
       ;;
