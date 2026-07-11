@@ -7,6 +7,10 @@ on:
         required: true
         type: string
         default: 'false'
+      with_nomount:
+        required: false
+        type: string
+        default: 'true'
       custom_name:
         required: true
         type: string
@@ -89,6 +93,7 @@ jobs:
       - name: Debug Inputs
         env:
           INPUT_SUSFS: ${{ inputs.with_susfs }}
+          INPUT_NOMOUNT: ${{ inputs.with_nomount }}
           INPUT_NAME: ${{ inputs.custom_name }}
           INPUT_KSU: ${{ inputs.ksu_method }}
           INPUT_CLANG: ${{ inputs.clang_toolchain }}
@@ -96,6 +101,7 @@ jobs:
         run: |
           echo "=== WORKFLOW INPUTS ==="
           echo "with_susfs:      '$INPUT_SUSFS'"
+          echo "with_nomount:    '$INPUT_NOMOUNT'"
           echo "custom_name:     '$INPUT_NAME'"
           echo "ksu_method:      '$INPUT_KSU'"
           echo "cpu_governor:    'schedutil'"
@@ -137,7 +143,8 @@ jobs:
             "$GITHUB_ENV" \
             "${{ inputs.clang_toolchain }}" \
             "${{ inputs.ksu_method }}" \
-            "${{ inputs.with_susfs }}" > /tmp/prep_build.log 2>&1; then
+            "${{ inputs.with_susfs }}" \
+            "${{ inputs.with_nomount }}" > /tmp/prep_build.log 2>&1; then
               cat /tmp/prep_build.log
               echo "❌ ERROR: prepare_kernel_build.sh failed!" > kernel/build.log
               tail -n 100 /tmp/prep_build.log >> kernel/build.log
@@ -284,6 +291,11 @@ jobs:
           add_cfg "CONFIG_PSTORE_CONSOLE=y"
           add_cfg "CONFIG_PSTORE_PMSG=y"
           add_cfg "CONFIG_PSTORE_RAM=y"
+
+          # NoMount — Kernel-based file injection and path redirection framework
+          echo "" >> "$DEFCONFIG"
+          echo "# NoMount file injection framework" >> "$DEFCONFIG"
+          add_cfg "CONFIG_NOMOUNT=y"
 
           git add arch/arm64/configs/gki_defconfig
           echo "✅ Defconfig finalized and added to git"

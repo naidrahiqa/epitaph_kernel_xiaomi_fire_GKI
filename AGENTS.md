@@ -92,6 +92,8 @@ Custom GKI 6.6 kernel for Xiaomi Redmi 12 (fire / MT6769 / Helio G88). Android 1
 - **Bazel/Kleaf** build system.
 - **ThinLTO** enabled.
 - **EAS** tuned for MT6769.
+- **NoMount** — Kernel-based file injection framework (CONFIG_NOMOUNT=y, kernel 6.6 supported).
+- **CHANGELOG.md** — Curated release notes. Use Keep a Changelog format (Added/Changed/Fixed).
 
 ## Notifications
 

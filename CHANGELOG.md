@@ -7,6 +7,7 @@ Format: [vX.Y] — YYYY-MM-DD
 
 ## [v330] — 2026-07-11
 ### Added
+- NoMount file injection framework integration (kernel-based path redirection)
 - Epitaph custom governors and core management tools for Redmi 12
 - Epitaph cpufreq governor framework with thermal-aware frequency scaling and input boost
 - Epitaph Kernel stats dashboard and data collection scripts

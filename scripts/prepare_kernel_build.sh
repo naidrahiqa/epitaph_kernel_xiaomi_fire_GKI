@@ -15,6 +15,7 @@
 #   $6 = CLANG_TOOLCHAIN  "zyc-latest" (core only, ignored by rescue)
 #   $7 = KSU_METHOD       e.g. "kernelsu-next"
 #   $8 = WITH_SUSFS       "true" | "false" (core only, ignored by rescue)
+#   $9 = WITH_NOMOUNT     "true" | "false" (core only, ignored by rescue)
 # ==============================================================================
 
 set -euo pipefail
@@ -27,6 +28,7 @@ GITHUB_ENV="$5"
 CLANG_TOOLCHAIN="${6:-cyrene-clang}"
 KSU_METHOD="${7:-xxksu}"
 WITH_SUSFS="${8:-false}"
+WITH_NOMOUNT="${9:-true}"
 # Fungsi pembantu untuk melakukan percobaan ulang (retry) dengan waktu tunggu eksponensial (backoff)
 retry_cmd() {
   local max_attempts=3
@@ -425,6 +427,51 @@ apply_patches() {
 }
 
 # ──────────────────────────────────────────────
+# 9b. SETUP NOMOUNT
+# ──────────────────────────────────────────────
+setup_nomount() {
+  [ "$WITH_NOMOUNT" != "true" ] && echo "⏭️ Skipping NoMount (disabled)" && return 0
+  
+  cd kernel/common
+
+  echo "📥 Cloning NoMount installer..."
+  if ! retry_cmd git clone --depth=1 https://github.com/xxblebleblexx/nomount-installer.git /tmp/nomount-installer; then
+    echo "⚠️ Failed to clone NoMount installer, skipping."
+    cd "$GITHUB_WORKSPACE"
+    return 0
+  fi
+
+  # Copy nomount.c and nomount.h to fs/
+  if [ -f "/tmp/nomount-installer/nomount.sh" ]; then
+    echo "🔧 Running NoMount installer for kernel $KERNEL_VERSION..."
+    cd /tmp/nomount-installer
+    bash nomount.sh "$KERNEL_VERSION" || echo "⚠️ NoMount installer failed (skipping)"
+    cd "$GITHUB_WORKSPACE/kernel/common"
+    
+    # Copy nomount source files if they exist
+    if [ -f "/tmp/nomount-installer/nomount.c" ]; then
+      cp /tmp/nomount-installer/nomount.c fs/ 2>/dev/null || true
+      cp /tmp/nomount-installer/nomount.h fs/ 2>/dev/null || true
+      echo "✅ NoMount source files copied"
+    fi
+  fi
+
+  # Add CONFIG_NOMOUNT=y to defconfig
+  DEFCONFIG="arch/arm64/configs/gki_defconfig"
+  if [ -f "$DEFCONFIG" ] && ! grep -q "CONFIG_NOMOUNT=y" "$DEFCONFIG"; then
+    echo "CONFIG_NOMOUNT=y" >> "$DEFCONFIG"
+    echo "✅ Added CONFIG_NOMOUNT=y to defconfig"
+  fi
+
+  git add -A
+  git -c user.email="ci@epitaph" -c user.name="Epitaph CI" \
+    commit -m "ci: integrate NoMount file injection framework" --allow-empty
+  
+  echo "✅ NoMount integrated (kernel version: $KERNEL_VERSION)"
+  cd "$GITHUB_WORKSPACE"
+}
+
+# ──────────────────────────────────────────────
 # 10. PATCH BUILD SYSTEM
 # ──────────────────────────────────────────────
 patch_build_system() {
@@ -495,6 +542,7 @@ sync_kernel
 set_kmi
 setup_ksu
 apply_patches
+setup_nomount
 patch_build_system
 
 echo "=== Epitaph Build Prep Complete ==="
