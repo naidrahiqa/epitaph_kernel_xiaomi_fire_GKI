@@ -101,7 +101,7 @@ jobs:
             TC_DISPLAY="ZyClang"
           fi
 
-          MESSAGE=$(printf '<b>🚀 Epitaph Kernel — Build Starting</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> xxKSU + %s\n<b>Triggered by:</b> %s\n\n<a href="%s">🔍 Monitor Build Progress on GitHub Actions</a>' \
+          MESSAGE=$(printf '🔥 <b>EPITAPH KERNEL · Build Starting</b>\n────────────────\n🚀 <b>Build:</b> %s\n📱 <b>Device:</b> Redmi 12 (fire) · G88\n🛠️ <b>Compiler:</b> %s\n⚡ <b>Feature:</b> xxKSU [No-SUSFS]\n👤 <b>Actor:</b> %s\n────────────────\n🔍 <a href="%s">Monitor Build Progress on GitHub Actions</a>' \
             "$RELEASE_TAG" "$TC_DISPLAY" "$ACTOR" "$RUN_URL")
           
           echo "Sending to Chat ID: ${TG_CHAT_ID}"
@@ -190,14 +190,14 @@ jobs:
           if [ "$TRIGGER_RESULT" = "success" ]; then
             # Sukses → kirim ke channel update
             [ -z "$TG_CHAT_ID" ] && exit 0
-            MESSAGE=$(printf '<b>👑 Epitaph Kernel — Build Finished Successfully</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> xxKSU + %s\n<b>Status:</b> ✅ SUCCESS\n\n📦 <a href="%s">GitHub Release</a>\n🔍 <a href="%s">Actions Run Log</a>' \
+            MESSAGE=$(printf '👑 <b>EPITAPH KERNEL · Compiled Successfully</b>\n────────────────\n📦 <b>Release:</b> %s\n📱 <b>Device:</b> Redmi 12 (fire) · G88\n🛠️ <b>Compiler:</b> %s\n⚡ <b>Feature:</b> xxKSU [No-SUSFS]\n────────────────\n📦 <a href="%s">GitHub Release</a> · 🔍 <a href="%s">Actions Log</a>' \
               "$RELEASE_TAG" "$TC_DISPLAY" "$RELEASE_URL" "$RUN_URL")
             curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${MESSAGE}" --form-string "parse_mode=HTML"
           else
             # Gagal → kirim ke channel error dump
             [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
-            MESSAGE=$(printf '<b>❌ Epitaph Kernel — Build Failed</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> xxKSU + %s\n<b>Status:</b> ❌ FAILED\n\n🔍 <a href="%s">Actions Run Log</a>' \
+            MESSAGE=$(printf '❌ <b>EPITAPH KERNEL · Compilation Failed</b>\n────────────────\n💥 <b>Build:</b> %s\n📱 <b>Device:</b> Redmi 12 (fire) · G88\n🛠️ <b>Compiler:</b> %s\n⚡ <b>Feature:</b> xxKSU [No-SUSFS]\n────────────────\n🔍 <a href="%s">Actions Log</a>' \
               "$RELEASE_TAG" "$TC_DISPLAY" "$RUN_URL")
             curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --form-string "chat_id=${TG_ERROR_CHAT_ID}" --form-string "text=${MESSAGE}" --form-string "parse_mode=HTML"
