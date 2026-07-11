@@ -399,6 +399,7 @@ jobs:
           DELIMITER=$(cat /proc/sys/kernel/random/uuid)
           echo "GIT_CHANGELOG<<${DELIMITER}" >> $GITHUB_ENV
           cat changelog.md >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
           echo "${DELIMITER}" >> $GITHUB_ENV
           echo "Generate Changelog,$START_TIME,$(date +%s)" >> /tmp/build_metrics/steps.csv
 

@@ -114,7 +114,7 @@ def main():
         "---\n\n"
     )
     
-    full_body = header + changelog_markdown
+    full_body = header + changelog_markdown + "\n"
     
     with open("changelog.md", "w") as f:
         f.write(full_body)
