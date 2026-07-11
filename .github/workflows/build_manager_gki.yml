@@ -13,6 +13,14 @@ on:
         description: "Release Tag"
         required: true
         default: "v1.0"
+      clang_toolchain:
+        description: "Clang Toolchain"
+        required: true
+        type: choice
+        options:
+          - zyc-latest
+          - cyrene-clang
+        default: "zyc-latest"
 
 permissions:
   actions: write
@@ -52,10 +60,17 @@ jobs:
           echo "✅ release_tag: $TAG"
 
       - name: "📊 Show Build Plan"
+        env:
+          CLANG_TOOLCHAIN: ${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}
         run: |
+          if [ "$CLANG_TOOLCHAIN" = "cyrene-clang" ]; then
+            TC_DISPLAY="Cyrene Clang"
+          else
+            TC_DISPLAY="ZyClang"
+          fi
           echo "## 🎛️ Epitaph Kernel Build" >> "$GITHUB_STEP_SUMMARY"
           echo "**Release Tag:** \`${{ steps.tag.outputs.release_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Configuration:** xxKSU + ZyClang (single build)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Configuration:** xxKSU + $TC_DISPLAY (single build)" >> "$GITHUB_STEP_SUMMARY"
 
   notify_start:
     name: "🚀 Notify Telegram (Starting)"
@@ -71,6 +86,7 @@ jobs:
           ACTOR: ${{ github.actor }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
+          CLANG_TOOLCHAIN: ${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}
         run: |
           if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
             echo "❌ Telegram secrets not set. Skipping."
@@ -79,8 +95,14 @@ jobs:
 
           RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
           
-          MESSAGE=$(printf '<b>🚀 Epitaph Kernel — Build Starting</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> xxKSU + ZyClang\n<b>Triggered by:</b> %s\n\n<a href="%s">🔍 Monitor Build Progress on GitHub Actions</a>' \
-            "$RELEASE_TAG" "$ACTOR" "$RUN_URL")
+          if [ "$CLANG_TOOLCHAIN" = "cyrene-clang" ]; then
+            TC_DISPLAY="Cyrene Clang"
+          else
+            TC_DISPLAY="ZyClang"
+          fi
+
+          MESSAGE=$(printf '<b>🚀 Epitaph Kernel — Build Starting</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> xxKSU + %s\n<b>Triggered by:</b> %s\n\n<a href="%s">🔍 Monitor Build Progress on GitHub Actions</a>' \
+            "$RELEASE_TAG" "$TC_DISPLAY" "$ACTOR" "$RUN_URL")
           
           echo "Sending to Chat ID: ${TG_CHAT_ID}"
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\n" -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
@@ -108,7 +130,7 @@ jobs:
       custom_name: "Epitaph"
       author_name: "Naidrahiqa"
       ksu_method: "xxksu"
-      clang_toolchain: "zyc-latest"
+      clang_toolchain: "${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}"
       release_tag: "${{ needs.prepare.outputs.release_tag }}"
 
   summary:
@@ -121,13 +143,19 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           TRIGGER_RESULT: ${{ needs.trigger.result }}
+          CLANG_TOOLCHAIN: ${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}
         run: |
+          if [ "$CLANG_TOOLCHAIN" = "cyrene-clang" ]; then
+            TC_DISPLAY="Cyrene Clang"
+          else
+            TC_DISPLAY="ZyClang"
+          fi
           echo "## 🎛️ Epitaph Kernel — Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Setting | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Release Tag** | \`$RELEASE_TAG\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Configuration** | \`xxKSU + ZyClang\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Configuration** | \`xxKSU + $TC_DISPLAY\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "$TRIGGER_RESULT" = "success" ]; then
@@ -146,24 +174,31 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          CLANG_TOOLCHAIN: ${{ github.event.inputs.clang_toolchain || 'zyc-latest' }}
         run: |
           [ -z "$TG_BOT_TOKEN" ] && exit 0
 
           RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
           RELEASE_URL="https://github.com/${REPO}/releases/tag/${RELEASE_TAG}"
 
+          if [ "$CLANG_TOOLCHAIN" = "cyrene-clang" ]; then
+            TC_DISPLAY="Cyrene Clang"
+          else
+            TC_DISPLAY="ZyClang"
+          fi
+
           if [ "$TRIGGER_RESULT" = "success" ]; then
             # Sukses → kirim ke channel update
             [ -z "$TG_CHAT_ID" ] && exit 0
-            MESSAGE=$(printf '<b>👑 Epitaph Kernel — Build Finished Successfully</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> xxKSU + ZyClang\n<b>Status:</b> ✅ SUCCESS\n\n📦 <a href="%s">GitHub Release</a>\n🔍 <a href="%s">Actions Run Log</a>' \
-              "$RELEASE_TAG" "$RELEASE_URL" "$RUN_URL")
+            MESSAGE=$(printf '<b>👑 Epitaph Kernel — Build Finished Successfully</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> xxKSU + %s\n<b>Status:</b> ✅ SUCCESS\n\n📦 <a href="%s">GitHub Release</a>\n🔍 <a href="%s">Actions Run Log</a>' \
+              "$RELEASE_TAG" "$TC_DISPLAY" "$RELEASE_URL" "$RUN_URL")
             curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --form-string "chat_id=${TG_CHAT_ID}" --form-string "text=${MESSAGE}" --form-string "parse_mode=HTML"
           else
             # Gagal → kirim ke channel error dump
             [ -z "$TG_ERROR_CHAT_ID" ] && exit 0
-            MESSAGE=$(printf '<b>❌ Epitaph Kernel — Build Failed</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> xxKSU + ZyClang\n<b>Status:</b> ❌ FAILED\n\n🔍 <a href="%s">Actions Run Log</a>' \
-              "$RELEASE_TAG" "$RUN_URL")
+            MESSAGE=$(printf '<b>❌ Epitaph Kernel — Build Failed</b>\n\n<b>Developer:</b> Naidrahiqa\n<b>Release Tag:</b> %s\n<b>Configuration:</b> xxKSU + %s\n<b>Status:</b> ❌ FAILED\n\n🔍 <a href="%s">Actions Run Log</a>' \
+              "$RELEASE_TAG" "$TC_DISPLAY" "$RUN_URL")
             curl -s -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --form-string "chat_id=${TG_ERROR_CHAT_ID}" --form-string "text=${MESSAGE}" --form-string "parse_mode=HTML"
           fi

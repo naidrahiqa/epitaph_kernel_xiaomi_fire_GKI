@@ -176,11 +176,28 @@ download_toolchain() {
       echo "CUSTOM_CLANG_PATH=$CLANG_PATH" >> "$GITHUB_ENV"
       echo "TOOLCHAIN_NAME=ZyClang" >> "$GITHUB_ENV"
       ;;
+    cyrene-clang)
+      echo "📥 Mengunduh Cyrene Clang..."
+      CYASSET_URL=$(retry_cmd fetch_release_asset "naidrahiqa/cyrene_clang" ".tar.zst")
+      if [ -z "$CYASSET_URL" ]; then
+        {
+          echo "❌ ERROR: Gagal mendapatkan URL Cyrene Clang!"
+          echo "📋 Detail: Permintaan API GitHub mengembalikan URL aset kosong."
+          echo "🔧 Saran perbaikan: Periksa konektivitas jaringan atau batas tingkat API."
+        } > "$GITHUB_WORKSPACE/kernel/build.log"
+        exit 1
+      fi
+      retry_cmd aria2c -x16 -s16 -k1M --retry-wait=5 --max-tries=10 -o clang.tar.zst "$CYASSET_URL"
+      smart_extract clang.tar.zst clang-cyrene
+      CLANG_PATH="$GITHUB_WORKSPACE/prebuilts/clang/host/linux-x86/clang-cyrene"
+      echo "CUSTOM_CLANG_PATH=$CLANG_PATH" >> "$GITHUB_ENV"
+      echo "TOOLCHAIN_NAME=CyreneClang" >> "$GITHUB_ENV"
+      ;;
     *)
       {
         echo "❌ ERROR: Toolchain tidak dikenal: $CLANG_TOOLCHAIN!"
         echo "📋 Detail: Clang toolchain '$CLANG_TOOLCHAIN' tidak didukung."
-          echo "🔧 Saran perbaikan: Pilih kompiler yang valid (zyc-latest)."
+        echo "🔧 Saran perbaikan: Pilih kompiler yang valid (zyc-latest, cyrene-clang)."
       } > "$GITHUB_WORKSPACE/kernel/build.log"
       exit 1
       ;;
@@ -225,7 +242,34 @@ sync_kernel() {
   KERNEL_COMMIT=$(git log --oneline -1)
   echo "✅ Menggunakan commit ujung cabang ($KERNEL_COMMIT)"
   echo "KERNEL_COMMIT=$KERNEL_COMMIT" >> "$GITHUB_ENV"
-  make kernelversion
+
+  # Mengintegrasikan Linux Stable LTS Terbaru (maksud gw 6.6.xxx ekronya make yang terbaru)
+  echo "📥 Menarik pembaruan LTS terbaru dari Linux Stable..."
+  git remote add stable https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable.git 2>/dev/null || true
+  
+  # Memperdalam riwayat AOSP agar dapat mendeteksi merge base (mengatasi batasan shallow clone)
+  echo "  → Memperdalam riwayat AOSP..."
+  git fetch origin --depth=50 || true
+  
+  # Mengambil commit terbaru dari linux-6.6.y
+  echo "  → Mengambil commit terbaru dari linux-6.6.y..."
+  if retry_cmd git fetch stable linux-6.6.y --depth=500; then
+    echo "  → Mencoba menggabungkan linux-6.6.y..."
+    git config user.email "ci@epitaph"
+    git config user.name "Epitaph CI"
+    if git merge FETCH_HEAD -m "ci: merge latest linux-6.6.y stable updates" --no-edit; then
+      echo "  ✅ BERHASIL: Linux Stable LTS terbaru berhasil digabungkan!"
+    else
+      echo "  ⚠️ GAGAL: Terjadi konflik saat menggabungkan Linux Stable. Menggunakan AOSP asli."
+      git merge --abort
+    fi
+  else
+    echo "  ⚠️ GAGAL: Tidak dapat mengambil data dari linux-stable. Menggunakan AOSP asli."
+  fi
+
+  REAL_KERNEL_VERSION=$(make kernelversion)
+  echo "REAL_KERNEL_VERSION=$REAL_KERNEL_VERSION" >> "$GITHUB_ENV"
+  echo "✅ REAL_KERNEL_VERSION=$REAL_KERNEL_VERSION"
   cd "$GITHUB_WORKSPACE"
 }
 

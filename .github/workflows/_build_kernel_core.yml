@@ -107,11 +107,17 @@ jobs:
         env:
           INPUT_NAME: ${{ inputs.custom_name }}
           INPUT_KSU: ${{ inputs.ksu_method }}
+          INPUT_CLANG: ${{ inputs.clang_toolchain }}
         run: |
-          echo "TOOLCHAIN_NAME=ZyClang" >> $GITHUB_ENV
+          if [ "$INPUT_CLANG" = "cyrene-clang" ]; then
+            TC_LABEL="CyreneClang"
+          else
+            TC_LABEL="ZyClang"
+          fi
+          echo "TOOLCHAIN_NAME=$TC_LABEL" >> $GITHUB_ENV
           BUILD_DATE=$(TZ='Asia/Jakarta' date '+%d%m%Y')
           echo "BUILD_DATE=${BUILD_DATE}" >> $GITHUB_ENV
-          BASE_NAME="${INPUT_NAME}-ZyClang-${INPUT_KSU}-${BUILD_DATE}"
+          BASE_NAME="${INPUT_NAME}-${TC_LABEL}-${INPUT_KSU}-${BUILD_DATE}"
           echo "ZIP_NAME=${BASE_NAME}" >> $GITHUB_ENV
           echo "✅ Environment initialized: ${BASE_NAME}"
 
@@ -584,6 +590,9 @@ jobs:
           tag_name: "${{ inputs.release_tag }}"
           name: "Epitaph Kernel ${{ inputs.release_tag }}"
           body: |
+            * **Kernel Version:** `${{ env.REAL_KERNEL_VERSION }}`
+            * **Toolchain:** `${{ env.TOOLCHAIN_NAME }}` (`${{ env.TOOLCHAIN_VER }}`)
+
             ${{ env.GIT_CHANGELOG }}
 
             ---
@@ -764,11 +773,11 @@ jobs:
           if [ "$JOB_STATUS" = "success" ]; then
             STATUS="✅ BERHASIL (SUCCESS)"
           fi
-          
           {
             echo "## 🛠️ Epitaph Kernel Build Summary"
             echo "- **Status:** $STATUS"
-            echo "- **Toolchain:** \`ZyClang\`"
+            echo "- **Versi Kernel:** \`${{ env.REAL_KERNEL_VERSION }}\`"
+            echo "- **Toolchain:** \`${{ env.TOOLCHAIN_NAME }}\`"
             echo "- **Metode Root:** \`${INPUT_KSU}\` v${KSU_VERSION:-unknown}"
             echo "- **Integrasi SUSFS:** \`Ya (Integrated)\`"
             echo "- **Pemicu Build:** \`${ACTOR}\` via \`${EVENT_NAME}\`"
