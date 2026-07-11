@@ -640,7 +640,7 @@ jobs:
           ZIP_BYTES=$(du -b "$ZIP_FILE" | cut -f1 || echo "0")
           ZIP_SIZE=$(du -h "$ZIP_FILE" | cut -f1 || echo "?")
           RELEASE_URL="https://github.com/${REPO}/releases/tag/${INPUT_RELEASE_TAG}"
-          CHANGELOG_COMMITS=$(sed '1,8d' changelog.md | head -n 12 || echo "No changes")
+          CHANGELOG_COMMITS=$(sed '1,2d' changelog.md | head -n 15 || echo "No changes")
           CAPTION=$(printf '👑 <b>EPITAPH KERNEL · Compiled Successfully</b>\n────────────────\n📦 <b>Release:</b> %s\n📱 <b>Device:</b> Redmi 12 (fire) · G88\n🩹 <b>Linux LTS:</b> %s\n🛠️ <b>Compiler:</b> %s (%s)\n⚡ <b>Root:</b> %s (v%s)\n📦 <b>Size:</b> %s\n⏱️ <b>Build Time:</b> %s (run #%s)\n────────────────\n📝 <b>Changelog:</b>\n%s\n────────────────\n📦 <a href="%s">GitHub Release</a> · 🔧 <a href="https://github.com/naidrahiqa/epitaph_rescue/releases/tag/%s">Epitaph Rescue Tool %s</a>' \
             "$INPUT_RELEASE_TAG" "${REAL_KERNEL_VERSION}" "${TOOLCHAIN_NAME}" "${TOOLCHAIN_VER}" "$INPUT_KSU" "${KSU_VERSION}" "$ZIP_SIZE" "${BUILD_TIME}" "$RUN_NUMBER" \
             "$CHANGELOG_COMMITS" "$RELEASE_URL" "${RESCUE_VER}" "${RESCUE_VER}")
